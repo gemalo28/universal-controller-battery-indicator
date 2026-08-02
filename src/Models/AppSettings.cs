@@ -13,10 +13,10 @@ public enum OverlayPosition
 public sealed record AppSettings(
     ModifierKeys OverlayModifiers,
     Key OverlayKey,
-    int PollingIntervalSeconds = 15,
+    int PollingIntervalSeconds = 30,
     OverlayPosition OverlayPosition = OverlayPosition.BottomRight)
 {
-    public const int DefaultPollingIntervalSeconds = 15;
+    public const int DefaultPollingIntervalSeconds = 30;
     public const int MinimumPollingIntervalSeconds = 5;
     public const int MaximumPollingIntervalSeconds = 300;
 

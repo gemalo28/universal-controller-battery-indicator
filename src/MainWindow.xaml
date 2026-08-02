@@ -101,6 +101,7 @@
       <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button"><Border x:Name="Surface" Background="{TemplateBinding Background}" CornerRadius="9" Padding="{TemplateBinding Padding}"><ContentPresenter VerticalAlignment="Center"/></Border><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Surface" Property="Background" Value="#252330"/><Setter Property="Foreground" Value="#F4F2FF"/></Trigger><Trigger Property="IsPressed" Value="True"><Setter TargetName="Surface" Property="Background" Value="#302C42"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter>
     </Style>
   </Window.Resources>
+  <AdornerDecorator>
   <Grid>
     <Grid.RowDefinitions><RowDefinition Height="46"/><RowDefinition Height="*"/></Grid.RowDefinitions>
     <Border Grid.Row="0" Background="#15141D" BorderBrush="#2A2835" BorderThickness="0,0,0,1" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
@@ -108,7 +109,7 @@
     </Border>
     <Grid x:Name="MainContent" Grid.Row="1">
     <Grid.ColumnDefinitions><ColumnDefinition Width="316"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-    <Border Background="#15141D" BorderBrush="#2A2835" BorderThickness="0,0,1,0">
+    <Border x:Name="LeftNavSurface" Background="#15141D" BorderBrush="#2A2835" BorderThickness="0,0,1,0" AllowDrop="True" Drop="LeftNavSurface_Drop">
       <Grid Margin="22,24,22,18"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
         <StackPanel><TextBlock Text="CONTROLLERS" Foreground="#8B7CF6" FontSize="10" FontWeight="Bold"/><TextBlock Text="Connected devices" Foreground="#F4F2FF" FontSize="23" FontWeight="SemiBold" Margin="0,5,0,0"/><TextBlock Text="Select one to view battery details." Foreground="#858092" FontSize="12" Margin="0,6,0,0"/></StackPanel>
         <Grid Grid.Row="1" Margin="0,24,0,12"><TextBlock Text="AVAILABLE NOW" Foreground="#6F6A7C" FontSize="10" FontWeight="Bold" VerticalAlignment="Center"/><Border HorizontalAlignment="Right" Background="#282438" CornerRadius="10" Padding="10,4"><TextBlock x:Name="DeviceCount" Text="0" Foreground="#CFC9E3" FontSize="11" FontWeight="SemiBold"/></Border></Grid>
@@ -139,7 +140,7 @@
     <Grid Grid.Column="1" Margin="38,28,38,22"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
       <Grid><StackPanel><TextBlock x:Name="PageTitle" Text="Overview" Foreground="#F4F2FF" FontSize="28" FontWeight="SemiBold"/><Border Background="#1D1B26" CornerRadius="10" Padding="10,6" HorizontalAlignment="Left" Margin="0,9,0,0"><StackPanel Orientation="Horizontal"><Ellipse x:Name="StatusDot" Width="7" Height="7" Fill="#6D6980" Margin="0,0,8,0" VerticalAlignment="Center"/><TextBlock x:Name="StatusText" Text="Scanning…" Foreground="#A8A3B3" FontSize="12"/></StackPanel></Border></StackPanel><Button x:Name="RefreshButton" Click="RefreshButton_Click" Style="{StaticResource RefreshButtonStyle}" HorizontalAlignment="Right" VerticalAlignment="Top"><StackPanel Orientation="Horizontal"><TextBlock Text="↻" FontSize="17" Margin="0,-1,7,0"/><TextBlock Text="Refresh" VerticalAlignment="Center"/></StackPanel></Button></Grid>
       <Grid Grid.Row="1" Margin="0,20,0,18">
-        <Border x:Name="WelcomePanel" Background="#15141D" BorderBrush="#292634" BorderThickness="1" CornerRadius="20" Padding="42" VerticalAlignment="Center" MaxWidth="580"><StackPanel><Border Width="82" Height="72" CornerRadius="20" Background="#27243A" HorizontalAlignment="Center"><Image Source="/assets/controller-icon-titlebar.png" Width="66" Height="56" Stretch="Uniform"/></Border><TextBlock Text="Your battery dashboard" Foreground="#F4F2FF" FontSize="25" FontWeight="SemiBold" TextAlignment="Center" Margin="0,22,0,0"/><TextBlock Text="Choose a controller from the left to see battery health, connection details, and available actions." Foreground="#9995AA" FontSize="14" LineHeight="22" TextWrapping="Wrap" TextAlignment="Center" Margin="0,10,0,0"/><Border Background="#1C1A26" CornerRadius="10" Padding="14,10" Margin="0,22,0,0"><TextBlock Text="Tip: Use your overlay shortcut for a quick battery check while gaming." Foreground="#AAA4BC" FontSize="12" TextWrapping="Wrap" TextAlignment="Center"/></Border></StackPanel></Border>
+        <Border x:Name="WelcomePanel" Background="#15141D" BorderBrush="#292634" BorderThickness="1" CornerRadius="20" Padding="42" VerticalAlignment="Center" MaxWidth="580"><StackPanel><Border Width="82" Height="72" CornerRadius="20" Background="#27243A" HorizontalAlignment="Center"><Image Source="/assets/controller-icon-titlebar.png" Width="66" Height="56" Stretch="Uniform"/></Border><TextBlock Text="Your battery dashboard" Foreground="#F4F2FF" FontSize="25" FontWeight="SemiBold" TextAlignment="Center" Margin="0,22,0,0"/><TextBlock Text="Choose a controller from the left to see battery health, connection details, and available actions." Foreground="#9995AA" FontSize="14" LineHeight="22" TextWrapping="Wrap" TextAlignment="Center" Margin="0,10,0,0"/><Border Background="#1C1A26" CornerRadius="10" Padding="14,10" Margin="0,22,0,0"><TextBlock x:Name="OverlayTipText" Foreground="#AAA4BC" FontSize="12" TextWrapping="Wrap" TextAlignment="Center"/></Border></StackPanel></Border>
         <StackPanel x:Name="DetailPanel" Visibility="Collapsed" VerticalAlignment="Center" MaxWidth="590" RenderTransformOrigin="0.5,0.5">
           <StackPanel.RenderTransform><TranslateTransform x:Name="DetailPanelTransform"/></StackPanel.RenderTransform>
           <TextBlock x:Name="DetailName" Foreground="#F4F2FF" FontSize="27" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
@@ -167,4 +168,5 @@
     </Grid>
     </Grid>
   </Grid>
+  </AdornerDecorator>
 </Window>

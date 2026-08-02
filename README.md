@@ -1,81 +1,156 @@
-# Universal Controller Battery Indicator
+# Controller Battery
 
-A native .NET 10 WPF prototype for viewing controller battery levels in one place.
+A native Windows dashboard for monitoring controller batteries, identifying devices,
+creating controller profiles, and checking charge levels from an in-game overlay.
+Built with WPF and .NET 10.
 
-## Run it
+## Features
 
-Requires the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0).
+- Displays connected controllers in a scrollable dashboard with battery level,
+  charging state, connection type, and last-update time.
+- Shows percentage estimates when the controller protocol provides enough battery
+  detail and honest categorical levels when it does not.
+- Polls automatically every 30 seconds by default, with a configurable interval from
+  5 to 300 seconds and a manual Refresh button.
+- Lets a selected controller be deselected to return to the splash screen.
+- Provides a global, non-activating overlay with controller icons, profile colors,
+  battery levels, and automatic polling updates.
+- Supports a configurable overlay shortcut and placement in any corner of the primary
+  display. The default shortcut is `Ctrl+Alt+B`.
+- Shows the current overlay shortcut in the splash-screen tip.
+- Displays low-battery notifications and sends a 450 ms attention rumble when the
+  active provider supports it.
+- Identifies supported controllers with a standardized 450 ms rumble pulse.
+- Turns off supported Bluetooth controllers from the details view.
+- Includes scrollable Settings, Profile, and About windows with consistent native UI,
+  custom window chrome, styled scrollbars, and a build version in About.
+- Includes release-build controller diagnostics for capturing raw HID reports and
+  descriptors from any input device.
+
+## Controller profiles
+
+Profiles are stored per stable controller identifier and persist between launches.
+Each controller can have:
+
+- A custom display name.
+- A profile accent color used by the dashboard, navigation icon, and overlay.
+- A custom controller-family icon: automatic, Xbox, PlayStation, Nintendo, 8BitDo,
+  or generic.
+- DualSense LED lighting settings when native LED control is available.
+
+### DualSense LED lighting
+
+Directly connected DualSense and DualSense Edge controllers support:
+
+- An independent custom LED color.
+- Syncing the LED with the profile accent color.
+- Saturated suggested colors.
+- Exact `#RRGGBB`, `RRGGBB`, or shorthand `#RGB` input.
+- Fine RGB sliders with live controller preview.
+- Bright, Medium, and Dim intensity settings.
+- Automatic reapplication after reconnecting.
+- Restoring the standard blue lightbar when custom lighting is disabled and saved.
+
+LED output is best effort. Steam Input, DS4Windows, games, or another application that
+continuously owns controller output can overwrite the app's color.
+
+## Grouping virtual controllers
+
+Translation software such as DS4Windows can expose both a physical controller and a
+virtual XInput controller. The app does not guess which devices belong together.
+
+To group them, drag the XInput tile onto its physical controller in the left navigation.
+The virtual output is then shown as a nested `Game output` row and hidden as a duplicate
+in the overlay. The association persists between launches. Drag the nested row onto an
+empty part of the left navigation to ungroup it. If its physical parent disconnects,
+the virtual controller automatically returns as a standalone tile.
+
+## Supported controllers
+
+| Controller/provider | Connections | Battery detail | Available actions |
+| --- | --- | --- | --- |
+| Xbox-compatible/XInput | XInput, wireless adapters, USB adapters, virtual XInput | Empty, Low, Medium, or Full when XInput exposes it; many wired and virtual devices expose no battery | Identify/rumble |
+| DualSense and DualSense Edge | Direct USB or Bluetooth HID | Estimated percentage and charging state from the native report | Identify, Bluetooth power-off, profile LED control |
+| Official Switch Pro Controller | Direct USB or Bluetooth HID | Native five-level battery category and charging state | Identify, Bluetooth power-off |
+| Native 8BitDo HID controllers | Bluetooth, USB, or 2.4 GHz modes | Percentage only when the active public protocol exposes a verified value | Monitoring varies by protocol |
+
+Adapters and translation layers can hide the physical controller or omit its battery
+telemetry. In those cases the app can only display what the exposed protocol reports.
+An 8BitDo receiver operating as XInput, for example, commonly appears wired and does
+not expose the paired controller's battery.
+
+DualSense percentages are estimates from coarse firmware battery bands rather than
+one-percent measurements. The app uses the midpoint interpretation also used by the
+Sony-authored Linux PlayStation HID driver.
+
+## Overlay notes
+
+The overlay is non-activating and placed above ordinary desktop and borderless-window
+applications. Exclusive fullscreen games control the final display
+surface and may prevent normal desktop overlays from appearing. Borderless/windowed
+fullscreen is the most compatible mode.
+
+## Diagnostics
+
+Controller diagnostics are available at the bottom of Settings in release builds.
+The capture records device metadata, report sizes, raw input reports, and report
+descriptor information where Windows and the device permit it. Files are written to:
+
+```text
+%LOCALAPPDATA%\ControllerBattery\diagnostics
+```
+
+Diagnostics can include hardware identifiers and raw controller data. Review a capture
+before sharing it publicly.
+
+## Run from source
+
+Requirements:
+
+- Windows 10 or Windows 11
+- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
+
 From PowerShell:
 
 ```powershell
 dotnet run
 ```
 
-Press **Ctrl+Alt+B** while the app is running to toggle the compact battery overlay
-above the Windows taskbar. The shortcut is system-wide and can be changed under
-**Settings** by pressing the desired modifier-and-key combination. It is saved under
-the current user's local application data and takes effect immediately.
-The overlay can be placed in any corner of the primary screen; bottom right is the
-default.
-
-Controller polling defaults to every **15 seconds**. It can be changed under
-**Settings** to any value from 5 to 300 seconds and takes effect immediately.
-
-Select a connected controller and choose **Edit profile** to give it a custom
-name or color. Profiles are matched to the provider's stable device identifier,
-persist between launches, and are reflected in both the dashboard and overlay.
-
 Build and publish with:
 
 ```powershell
-dotnet build
+dotnet build -c Release
 dotnet publish -c Release -r win-x64 --self-contained true
 ```
+
+## Local data
+
+Settings and controller profiles are stored under:
+
+```text
+%LOCALAPPDATA%\ControllerBattery
+```
+
+Saved settings include the overlay shortcut, overlay position, and polling interval.
+Profile data includes names, colors, icons, LED preferences, and explicit virtual-device
+grouping relationships.
 
 ## Architecture
 
 - `ControllerBattery.csproj` configures the .NET 10 WPF application.
-- `src/MainWindow.xaml` contains the native Windows interface.
-- `src/MainWindow.xaml.cs` owns presentation behavior.
-- `src/OverlayWindow.xaml` contains the non-activating, always-on-top quick view.
-- `src/SettingsWindow.xaml` captures and updates the global overlay shortcut.
-- `src/ProfileWindow.xaml` edits controller names and profile colors.
-- `src/Models` contains the normalized controller model.
-- `src/Providers` contains the provider contract and current implementations.
-- `docs/architecture.md` defines how additional controller backends plug in.
+- `src/MainWindow.xaml` and `src/MainWindow.xaml.cs` contain the dashboard and primary
+  application behavior.
+- `src/OverlayWindow.xaml` contains the compact in-game battery view.
+- `src/SettingsWindow.xaml`, `src/ProfileWindow.xaml`, and `src/AboutWindow.xaml`
+  contain the supporting windows.
+- `src/LowBatteryNotificationWindow.xaml` contains low-battery alerts.
+- `src/LedColorWindow.xaml` provides exact color entry and live LED preview.
+- `src/Models` contains normalized settings, profile, battery, and controller models.
+- `src/Providers` contains the composite provider contract and protocol-specific
+  XInput, DualSense, Switch Pro, and 8BitDo implementations.
+- `src/Services` contains persistence, display placement, and diagnostics services.
+- `docs/architecture.md` explains how additional controller providers plug in.
 
-The first real provider detects up to four XInput controllers, including adapters
-that emulate Xbox controllers. XInput only reports coarse battery levels. Some USB
-adapters report as wired and do not forward the paired controller's battery; those
-devices still appear, with their battery marked unavailable.
-
-The Sony HID provider detects standard DualSense and DualSense Edge controllers
-connected directly over USB or Bluetooth. It reads the native full input report for
-battery level and charging state. A controller hidden behind an emulating adapter is
-only visible through whichever protocol that adapter exposes.
-
-Additional providers can cover Windows.Gaming.Input, Bluetooth/HID, and other
-controller-specific protocols. Each adapter returns the same `ControllerDevice`
-model, keeping the UI independent of device family.
-
-Battery presentation prefers a percentage. Protocols with approximately ten or more
-battery steps are normalized to percentages; lower-resolution protocols fall back to
-Empty, Low, Medium, High, or Full.
-
-The 8BitDo provider discovers native 8BitDo HID gamepads over Bluetooth, USB, and
-2.4 GHz receiver modes. Receivers operating as XInput remain owned by the XInput
-provider to prevent duplicate entries. Battery is shown only when the active public
-protocol supplies a verified value; most XInput receiver modes do not.
-
-The Nintendo HID provider supports the official Switch Pro Controller (`057E:2009`)
-over direct Bluetooth and USB connections. It performs the wired Nintendo handshake
-and requests full report mode when possible, then reads the native five battery bands
-and charging bit. Those bands remain categorical rather than made-up percentages.
-Controllers hidden behind an emulating adapter are limited to whatever it exposes.
-
-## Turning controllers off
-
-The details view shows **Turn off controller** only when the active transport has a
-verified shutdown command. Direct Bluetooth Switch Pro and DualSense controllers are
-currently supported. USB devices remain powered by their cable, while XInput and
-8BitDo receiver modes do not expose a stable, documented per-device shutdown command.
+Controller Battery is an independent project and is not affiliated with Sony,
+Microsoft, Nintendo, 8BitDo, Valve, DS4Windows, or other controller manufacturers and
+software vendors. Product names and trademarks belong to their respective owners.

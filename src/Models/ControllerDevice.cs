@@ -15,4 +15,5 @@ public sealed record ControllerDevice(
     bool CanPowerOff = false,
     bool CanIdentify = false,
     string? AccentColor = null,
-    string? ProfileIconKind = null);
+    string? ProfileIconKind = null,
+    bool CanSetLed = false);

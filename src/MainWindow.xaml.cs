@@ -35,7 +35,12 @@ public partial class MainWindow : Window
     private OverlayWindow? _overlay;
     private LowBatteryNotificationWindow? _lowBatteryNotification;
     private readonly HashSet<string> _lowBatteryControllers = [];
+    private readonly HashSet<string> _appliedLedProfiles = [];
     private HwndSource? _windowSource;
+    private Point _controllerDragStart;
+    private bool _controllerDragStarted;
+    private ControllerDragPopup? _controllerDragPopup;
+    private const string ControllerDragFormat = "ControllerBattery.ControllerDeviceKey";
 
     private static IControllerProvider CreateHardwareProvider() =>
         new CompositeControllerProvider(
@@ -57,6 +62,7 @@ public partial class MainWindow : Window
         _refreshTimer.Tick += async (_, _) => await RefreshControllersAsync();
         _refreshTimer.Start();
         UpdatePollingText();
+        UpdateOverlayTip();
 
         SourceInitialized += MainWindow_SourceInitialized;
         Loaded += async (_, _) => await RefreshControllersAsync();
@@ -79,10 +85,17 @@ public partial class MainWindow : Window
         {
             _detectedControllers = await _provider.GetControllersAsync();
             _controllers = ApplyProfiles(_detectedControllers);
+            await ApplyPendingProfileLedsAsync();
             await ShowLowBatteryAlertsAsync();
             RenderControllerList();
 
-            var count = _controllers.Count;
+            if (_overlay?.IsVisible == true)
+            {
+                _overlay.Update(PresentationControllers(), _settings.OverlayShortcutText,
+                    _settings.OverlayPosition);
+            }
+
+            var count = PresentationControllers().Count;
             DeviceCount.Text = count.ToString();
             EmptyState.Visibility = count == 0 ? Visibility.Visible : Visibility.Collapsed;
             StatusText.Text = count == 0 ? "No controllers found" : "Monitoring";
@@ -115,11 +128,27 @@ public partial class MainWindow : Window
     private void RenderControllerList()
     {
         ControllerList.Children.Clear();
-        foreach (var controller in _controllers)
+        foreach (var controller in PresentationControllers())
         {
             ControllerList.Children.Add(CreateControllerCard(controller));
         }
     }
+
+    private IReadOnlyList<ControllerDevice> PresentationControllers() =>
+        _controllers.Where(controller => LinkedParent(controller) is null).ToArray();
+
+    private ControllerDevice? LinkedParent(ControllerDevice controller)
+    {
+        if (!_profiles.TryGetValue(DeviceKey(controller), out var profile) ||
+            string.IsNullOrWhiteSpace(profile.ParentDeviceKey))
+            return null;
+        return _controllers.FirstOrDefault(candidate => DeviceKey(candidate).Equals(
+            profile.ParentDeviceKey, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private IReadOnlyList<ControllerDevice> LinkedOutputs(ControllerDevice controller) =>
+        _controllers.Where(candidate => LinkedParent(candidate) is { } parent &&
+            DeviceKey(parent).Equals(DeviceKey(controller), StringComparison.OrdinalIgnoreCase)).ToArray();
 
     private async Task ShowLowBatteryAlertsAsync()
     {
@@ -166,8 +195,19 @@ public partial class MainWindow : Window
         {
             Style = (Style)FindResource("ControllerCard"),
             Tag = DeviceKey(controller),
-            ToolTip = $"Open details for {controller.Name}"
+            ToolTip = controller.ProviderId.Equals("xinput", StringComparison.OrdinalIgnoreCase)
+                ? "Drag onto a physical controller to group it, or click for details"
+                : $"Open details for {controller.Name}"
         };
+        card.PreviewMouseLeftButtonDown += ControllerDrag_MouseLeftButtonDown;
+        card.PreviewMouseMove += ControllerDrag_MouseMove;
+        if (!controller.ProviderId.Equals("xinput", StringComparison.OrdinalIgnoreCase))
+        {
+            card.AllowDrop = true;
+            card.DragEnter += ControllerCard_DragEnter;
+            card.DragLeave += ControllerCard_DragLeave;
+            card.Drop += ControllerCard_Drop;
+        }
         if (DeviceKey(controller) == _selectedId)
         {
             card.Background = BrushFrom("#302A45");
@@ -235,7 +275,45 @@ public partial class MainWindow : Window
         Grid.SetColumn(battery, 2);
         grid.Children.Add(battery);
 
-        card.Child = grid;
+        var linkedOutputs = LinkedOutputs(controller);
+        if (linkedOutputs.Count == 0)
+        {
+            card.Child = grid;
+        }
+        else
+        {
+            var content = new StackPanel();
+            content.Children.Add(grid);
+            foreach (var output in linkedOutputs)
+            {
+                content.Children.Add(new Border
+                {
+                    Height = 1,
+                    Background = BrushFrom("#343140"),
+                    Margin = new Thickness(46, 11, 0, 9)
+                });
+                var outputRow = new Border
+                {
+                    Tag = DeviceKey(output),
+                    Cursor = Cursors.Hand,
+                    Background = Brushes.Transparent,
+                    Margin = new Thickness(46, 0, 0, 0),
+                    ToolTip = "Drag onto empty navigation space to ungroup, or click for details"
+                };
+                var outputText = new TextBlock
+                {
+                    Text = $"↳  Game output · {output.Name}",
+                    Foreground = BrushFrom("#9995AA"),
+                    FontSize = 11
+                };
+                outputRow.Child = outputText;
+                outputRow.MouseLeftButtonUp += ControllerCard_MouseLeftButtonUp;
+                outputRow.PreviewMouseLeftButtonDown += ControllerDrag_MouseLeftButtonDown;
+                outputRow.PreviewMouseMove += ControllerDrag_MouseMove;
+                content.Children.Add(outputRow);
+            }
+            card.Child = content;
+        }
         card.MouseLeftButtonUp += ControllerCard_MouseLeftButtonUp;
         return card;
     }
@@ -291,9 +369,16 @@ public partial class MainWindow : Window
 
     private void ControllerCard_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
+        if (_controllerDragStarted)
+        {
+            _controllerDragStarted = false;
+            e.Handled = true;
+            return;
+        }
         if (sender is Border { Tag: string id } &&
             _controllers.FirstOrDefault(device => DeviceKey(device) == id) is { } controller)
         {
+            e.Handled = true;
             if (id == _selectedId)
             {
                 ShowOverview();
@@ -304,6 +389,153 @@ public partial class MainWindow : Window
             ShowControllerDetail(controller, animate: id != _selectedId);
             RenderControllerList();
         }
+    }
+
+    private void ControllerDrag_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        _controllerDragStart = e.GetPosition(this);
+    }
+
+    private void ControllerDrag_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (e.LeftButton != MouseButtonState.Pressed || sender is not FrameworkElement
+            { Tag: string deviceKey }) return;
+        var controller = _controllers.FirstOrDefault(candidate =>
+            DeviceKey(candidate).Equals(deviceKey, StringComparison.OrdinalIgnoreCase));
+        if (controller is null || !controller.ProviderId.Equals("xinput",
+                StringComparison.OrdinalIgnoreCase)) return;
+
+        var position = e.GetPosition(this);
+        if (Math.Abs(position.X - _controllerDragStart.X) < SystemParameters.MinimumHorizontalDragDistance &&
+            Math.Abs(position.Y - _controllerDragStart.Y) < SystemParameters.MinimumVerticalDragDistance)
+            return;
+
+        _controllerDragStarted = true;
+        var source = (FrameworkElement)sender;
+        _controllerDragPopup = new ControllerDragPopup(LeftNavSurface, source);
+        _controllerDragPopup.MoveToCursor();
+        _controllerDragPopup.IsOpen = true;
+        source.Opacity = 0.28;
+        source.GiveFeedback += ControllerDrag_GiveFeedback;
+        try
+        {
+            DragDrop.DoDragDrop(source,
+                new DataObject(ControllerDragFormat, deviceKey), DragDropEffects.Move);
+        }
+        finally
+        {
+            source.GiveFeedback -= ControllerDrag_GiveFeedback;
+            source.Opacity = 1;
+            if (_controllerDragPopup is not null)
+                _controllerDragPopup.IsOpen = false;
+            _controllerDragPopup = null;
+        }
+    }
+
+    private void ControllerDrag_GiveFeedback(object sender, GiveFeedbackEventArgs e)
+    {
+        _controllerDragPopup?.MoveToCursor();
+        e.UseDefaultCursors = true;
+        e.Handled = true;
+    }
+
+    private void ControllerCard_DragEnter(object sender, DragEventArgs e)
+    {
+        if (sender is not Border card || !CanLinkDrop(card, e.Data))
+        {
+            e.Effects = DragDropEffects.None;
+            return;
+        }
+        e.Effects = DragDropEffects.Move;
+        card.BorderBrush = BrushFrom("#8B7CF6");
+        card.BorderThickness = new Thickness(2);
+        AnimateDropTarget(card, 1.025);
+        e.Handled = true;
+    }
+
+    private void ControllerCard_DragLeave(object sender, DragEventArgs e)
+    {
+        if (sender is Border card)
+        {
+            card.BorderBrush = BrushFrom("#5A546C");
+            card.BorderThickness = new Thickness(1.5);
+            AnimateDropTarget(card, 1);
+        }
+    }
+
+    private void ControllerCard_Drop(object sender, DragEventArgs e)
+    {
+        if (sender is not Border { Tag: string parentKey } card || !CanLinkDrop(card, e.Data))
+            return;
+        var childKey = (string)e.Data.GetData(ControllerDragFormat)!;
+        AnimateDropTarget(card, 1);
+        SetControllerParent(childKey, parentKey);
+        e.Handled = true;
+    }
+
+    private static void AnimateDropTarget(UIElement element, double scale)
+    {
+        if (element.RenderTransform is not ScaleTransform transform)
+        {
+            transform = new ScaleTransform(1, 1);
+            element.RenderTransform = transform;
+            element.RenderTransformOrigin = new Point(0.5, 0.5);
+        }
+        var duration = TimeSpan.FromMilliseconds(120);
+        transform.BeginAnimation(ScaleTransform.ScaleXProperty,
+            new DoubleAnimation(scale, duration));
+        transform.BeginAnimation(ScaleTransform.ScaleYProperty,
+            new DoubleAnimation(scale, duration));
+    }
+
+    private static bool HasControllerDrag(IDataObject data) =>
+        data.GetDataPresent(ControllerDragFormat) && data.GetData(ControllerDragFormat) is string;
+
+    private bool CanLinkDrop(Border card, IDataObject data)
+    {
+        if (!HasControllerDrag(data) || card.Tag is not string parentKey) return false;
+        var childKey = (string)data.GetData(ControllerDragFormat)!;
+        return !childKey.Equals(parentKey, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void LeftNavSurface_Drop(object sender, DragEventArgs e)
+    {
+        if (!HasControllerDrag(e.Data)) return;
+        SetControllerParent((string)e.Data.GetData(ControllerDragFormat)!, null);
+        e.Handled = true;
+    }
+
+    private void SetControllerParent(string childKey, string? parentKey)
+    {
+        var child = _controllers.FirstOrDefault(controller => DeviceKey(controller).Equals(
+            childKey, StringComparison.OrdinalIgnoreCase));
+        if (child is null) return;
+
+        _profiles.TryGetValue(childKey, out var existing);
+        var profile = existing is null
+            ? new ControllerProfile(childKey, null, ControllerProfile.DefaultAccentColor,
+                ParentDeviceKey: parentKey)
+            : existing with { ParentDeviceKey = parentKey };
+        if (parentKey is null && string.IsNullOrWhiteSpace(profile.CustomName) &&
+            profile.AccentColor.Equals(ControllerProfile.DefaultAccentColor,
+                StringComparison.OrdinalIgnoreCase) && string.IsNullOrWhiteSpace(profile.IconKind) &&
+            profile.LedColor is null && !profile.SyncLedWithProfile)
+            _profiles.Remove(childKey);
+        else
+            _profiles[childKey] = profile;
+
+        try { ControllerProfileStore.Save(_profiles); }
+        catch (IOException exception)
+        {
+            MessageBox.Show(this, exception.Message, "Could not save controller grouping",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
+        RenderControllerList();
+        DeviceCount.Text = PresentationControllers().Count.ToString();
+        if (_overlay?.IsVisible == true)
+            _overlay.Update(PresentationControllers(), _settings.OverlayShortcutText,
+                _settings.OverlayPosition);
     }
 
     private void ShowControllerDetail(ControllerDevice controller, bool animate = false)
@@ -652,7 +884,8 @@ public partial class MainWindow : Window
         if (controller is null) return;
 
         _profiles.TryGetValue(DeviceKey(controller), out var existing);
-        var dialog = new ProfileWindow(controller, existing) { Owner = this };
+        var dialog = new ProfileWindow(controller, existing,
+            (color, brightness) => PreviewLedColorAsync(controller, color, brightness)) { Owner = this };
         bool? accepted;
         SetModalBackdrop(true);
         try
@@ -665,10 +898,13 @@ public partial class MainWindow : Window
         }
 
         if (accepted != true || dialog.Result is not { } profile) return;
+        _appliedLedProfiles.Remove(profile.DeviceKey);
 
         if (string.IsNullOrWhiteSpace(profile.CustomName) &&
             profile.AccentColor.Equals(ControllerProfile.DefaultAccentColor, StringComparison.OrdinalIgnoreCase) &&
-            string.IsNullOrWhiteSpace(profile.IconKind))
+            string.IsNullOrWhiteSpace(profile.IconKind) &&
+            profile.LedColor is null && !profile.SyncLedWithProfile &&
+            string.IsNullOrWhiteSpace(profile.ParentDeviceKey))
             _profiles.Remove(profile.DeviceKey);
         else
             _profiles[profile.DeviceKey] = profile;
@@ -688,7 +924,67 @@ public partial class MainWindow : Window
         RenderControllerList();
         ShowControllerDetail(_controllers.First(device => DeviceKey(device) == profile.DeviceKey));
         if (_overlay?.IsVisible == true)
-            _overlay.Update(_controllers, _settings.OverlayShortcutText, _settings.OverlayPosition);
+            _overlay.Update(PresentationControllers(), _settings.OverlayShortcutText, _settings.OverlayPosition);
+
+        var activeLedColor = profile.SyncLedWithProfile ? profile.AccentColor : profile.LedColor;
+        if (activeLedColor is { } ledColor && controller.CanSetLed &&
+            _provider is IControllerLedProvider ledProvider)
+        {
+            _ = ApplyLedColorAsync(ledProvider, controller, ledColor, profile.LedBrightness);
+        }
+        else if (controller.CanSetLed && _provider is IControllerLedProvider resetProvider)
+        {
+            _ = ResetLedAsync(resetProvider, controller);
+        }
+    }
+
+    private static async Task ApplyLedColorAsync(IControllerLedProvider provider,
+        ControllerDevice controller, string color, byte brightness = 0)
+    {
+        try { await provider.SetLedColorAsync(controller, color, brightness); }
+        catch (Exception) { /* LED control is best-effort when another app owns output. */ }
+    }
+
+    private static async Task ResetLedAsync(IControllerLedProvider provider,
+        ControllerDevice controller)
+    {
+        try { await provider.ResetLedAsync(controller); }
+        catch (Exception) { /* LED release is best-effort when another app owns output. */ }
+    }
+
+    private Task PreviewLedColorAsync(ControllerDevice controller, string color, byte brightness) =>
+        _provider is IControllerLedProvider ledProvider
+            ? ApplyLedColorAsync(ledProvider, controller, color, brightness)
+            : Task.CompletedTask;
+
+    private async Task ApplyPendingProfileLedsAsync()
+    {
+        var connectedKeys = _controllers.Select(DeviceKey).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        _appliedLedProfiles.RemoveWhere(key => !connectedKeys.Contains(key));
+        if (_provider is not IControllerLedProvider ledProvider) return;
+
+        foreach (var controller in _controllers.Where(device => device.CanSetLed))
+        {
+            var key = DeviceKey(controller);
+            var ledColor = _profiles.TryGetValue(key, out var configuredProfile)
+                ? configuredProfile.SyncLedWithProfile
+                    ? configuredProfile.AccentColor
+                    : configuredProfile.LedColor
+                : null;
+            if (_appliedLedProfiles.Contains(key) ||
+                configuredProfile is null || ledColor is null)
+                continue;
+            try
+            {
+                await ledProvider.SetLedColorAsync(controller, ledColor,
+                    configuredProfile.LedBrightness);
+                _appliedLedProfiles.Add(key);
+            }
+            catch
+            {
+                // Retry on the next refresh if another app temporarily owns output.
+            }
+        }
     }
 
     private void MainWindow_SourceInitialized(object? sender, EventArgs e)
@@ -723,16 +1019,16 @@ public partial class MainWindow : Window
         }
 
         _overlay ??= new OverlayWindow();
-        _overlay.Update(_controllers, _settings.OverlayShortcutText, _settings.OverlayPosition);
+        _overlay.Update(PresentationControllers(), _settings.OverlayShortcutText, _settings.OverlayPosition);
         _overlay.Show();
-        _overlay.Update(_controllers, _settings.OverlayShortcutText, _settings.OverlayPosition);
+        _overlay.Update(PresentationControllers(), _settings.OverlayShortcutText, _settings.OverlayPosition);
 
         try
         {
             _detectedControllers = await _provider.GetControllersAsync();
             _controllers = ApplyProfiles(_detectedControllers);
             if (_overlay.IsVisible)
-                _overlay.Update(_controllers, _settings.OverlayShortcutText, _settings.OverlayPosition);
+                _overlay.Update(PresentationControllers(), _settings.OverlayShortcutText, _settings.OverlayPosition);
         }
         catch
         {
@@ -784,8 +1080,9 @@ public partial class MainWindow : Window
         AppSettingsStore.Save(_settings);
         _refreshTimer.Interval = TimeSpan.FromSeconds(_settings.PollingIntervalSeconds);
         UpdatePollingText();
+        UpdateOverlayTip();
         if (_overlay?.IsVisible == true)
-            _overlay.Update(_controllers, _settings.OverlayShortcutText, _settings.OverlayPosition);
+            _overlay.Update(PresentationControllers(), _settings.OverlayShortcutText, _settings.OverlayPosition);
     }
 
     private void SetModalBackdrop(bool visible)
@@ -801,6 +1098,9 @@ public partial class MainWindow : Window
 
     private void UpdatePollingText() =>
         PollingText.Text = $"{_settings.PollingIntervalSeconds}s refresh";
+
+    private void UpdateOverlayTip() =>
+        OverlayTipText.Text = $"Tip: Press {_settings.OverlayShortcutText} for a quick battery check while gaming.";
 
     // Optional diagnostic callback; remove with the TEST card in SettingsWindow.xaml.
     private void ShowTestLowBatteryNotification(OverlayPosition position)

@@ -9,7 +9,7 @@ namespace ControllerBattery.Providers;
 /// Supports the standard DualSense and DualSense Edge over USB and Bluetooth.
 /// </summary>
 public sealed class DualSenseHidProvider : IControllerProvider, IPowerOffControllerProvider,
-    IAttentionPulseControllerProvider
+    IAttentionPulseControllerProvider, IControllerLedProvider
 {
     private const int SonyVendorId = 0x054C;
     private const int DualSenseProductId = 0x0CE6;
@@ -28,6 +28,14 @@ public sealed class DualSenseHidProvider : IControllerProvider, IPowerOffControl
 
     public Task PulseAsync(ControllerDevice controller, CancellationToken cancellationToken = default) =>
         Task.Run(() => Pulse(controller, cancellationToken), cancellationToken);
+
+    public Task SetLedColorAsync(ControllerDevice controller, string color, byte brightness = 0,
+        CancellationToken cancellationToken = default) =>
+        Task.Run(() => SetLedColor(controller, color, brightness, cancellationToken), cancellationToken);
+
+    public Task ResetLedAsync(ControllerDevice controller,
+        CancellationToken cancellationToken = default) =>
+        Task.Run(() => ResetLed(controller, cancellationToken), cancellationToken);
 
     private IReadOnlyList<ControllerDevice> Scan(CancellationToken cancellationToken)
     {
@@ -114,7 +122,8 @@ public sealed class DualSenseHidProvider : IControllerProvider, IPowerOffControl
             battery?.Percent is null ? note : battery.Note,
             hardwareId,
             connection == "Bluetooth",
-            true);
+            true,
+            CanSetLed: true);
     }
 
     private static void TryEnableFullBluetoothReports(HidStream stream, HidDevice device)
@@ -189,6 +198,99 @@ public sealed class DualSenseHidProvider : IControllerProvider, IPowerOffControl
                 stream.Write(CreateRumbleReport(bluetooth, sequence, 0, 0));
             }
         }
+    }
+
+    private static void SetLedColor(ControllerDevice controller, string color, byte brightness,
+        CancellationToken cancellationToken)
+    {
+        var device = DeviceList.Local.GetHidDevices(SonyVendorId)
+            .Where(IsSupportedProduct)
+            .FirstOrDefault(candidate => GetStableHardwareId(candidate)
+                .Equals(controller.Id, StringComparison.OrdinalIgnoreCase))
+            ?? throw new IOException("The DualSense controller is no longer connected.");
+        if (!device.TryOpen(out var stream))
+            throw new IOException("The DualSense controller is in use by another application.");
+
+        var red = Convert.ToByte(color.Substring(1, 2), 16);
+        var green = Convert.ToByte(color.Substring(3, 2), 16);
+        var blue = Convert.ToByte(color.Substring(5, 2), 16);
+        using (stream)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            stream.WriteTimeout = 350;
+            var bluetooth = device.GetMaxInputReportLength() >= 78;
+            stream.Write(CreateLightbarReport(bluetooth, red, green, blue, brightness));
+        }
+    }
+
+    private static void ResetLed(ControllerDevice controller,
+        CancellationToken cancellationToken)
+    {
+        var device = DeviceList.Local.GetHidDevices(SonyVendorId)
+            .Where(IsSupportedProduct)
+            .FirstOrDefault(candidate => GetStableHardwareId(candidate)
+                .Equals(controller.Id, StringComparison.OrdinalIgnoreCase))
+            ?? throw new IOException("The DualSense controller is no longer connected.");
+        if (!device.TryOpen(out var stream))
+            throw new IOException("The DualSense controller is in use by another application.");
+
+        using (stream)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            stream.WriteTimeout = 350;
+            var bluetooth = device.GetMaxInputReportLength() >= 78;
+            // Windows does not restore the DualSense startup light after LED
+            // control is released, so explicitly return to its normal blue.
+            stream.Write(CreateLightbarReport(bluetooth, 0, 0, 255));
+        }
+    }
+
+    internal static byte[] CreateLightbarReport(bool bluetooth, byte red, byte green, byte blue,
+        byte brightness = 0)
+    {
+        var report = new byte[bluetooth ? 78 : 63];
+        var commonOffset = bluetooth ? 3 : 1;
+        var brightnessScale = brightness switch
+        {
+            1 => 0.60,
+            2 => 0.30,
+            _ => 1.00
+        };
+        report[0] = bluetooth ? (byte)0x31 : (byte)0x02;
+        if (bluetooth)
+            report[2] = 0x10;
+        report[commonOffset + 1] = 0x04; // Enable RGB lightbar control.
+        // DualSense firmware does not consistently honor its separate LED
+        // intensity field for the RGB lightbar. Scale the RGB channels, which
+        // is also how multicolor brightness is implemented by hid-playstation.
+        report[commonOffset + 44] = ScaleChannel(red, brightnessScale);
+        report[commonOffset + 45] = ScaleChannel(green, brightnessScale);
+        report[commonOffset + 46] = ScaleChannel(blue, brightnessScale);
+        if (bluetooth)
+        {
+            var crc = ComputeOutputCrc(report.AsSpan(0, 74));
+            BitConverter.TryWriteBytes(report.AsSpan(74, 4), crc);
+        }
+        return report;
+    }
+
+    private static byte ScaleChannel(byte channel, double scale) =>
+        (byte)Math.Round(channel * scale, MidpointRounding.AwayFromZero);
+
+    internal static byte[] CreateReleaseLightbarReport(bool bluetooth)
+    {
+        var report = new byte[bluetooth ? 78 : 63];
+        var commonOffset = bluetooth ? 3 : 1;
+        report[0] = bluetooth ? (byte)0x31 : (byte)0x02;
+        if (bluetooth)
+            report[2] = 0x10;
+        report[commonOffset + 1] = 0x08; // Release LEDs back to controller firmware.
+        if (bluetooth)
+        {
+            var crc = ComputeOutputCrc(report.AsSpan(0, 74));
+            BitConverter.TryWriteBytes(report.AsSpan(74, 4), crc);
+        }
+        return report;
     }
 
     internal static byte[] CreateRumbleReport(

@@ -25,7 +25,13 @@ public partial class ProfileWindow : Window
 
     private readonly string _deviceKey;
     private readonly ControllerDevice _controller;
+    private readonly Func<string, byte, Task>? _previewLedColorAsync;
+    private readonly string _initialLedColor;
+    private readonly byte _initialLedBrightness;
+    private readonly string? _parentDeviceKey;
     private string _selectedColor;
+    private string _selectedLedColor;
+    private byte _selectedLedBrightness;
     private string? _selectedIconKind;
     private readonly List<Button> _colorButtons = [];
     private readonly List<Button> _iconButtons = [];
@@ -34,15 +40,31 @@ public partial class ProfileWindow : Window
 
     public ControllerProfile? Result { get; private set; }
 
-    public ProfileWindow(ControllerDevice controller, ControllerProfile? profile)
+    public ProfileWindow(ControllerDevice controller, ControllerProfile? profile,
+        Func<string, byte, Task>? previewLedColorAsync = null)
     {
         InitializeComponent();
         _controller = controller;
+        _previewLedColorAsync = previewLedColorAsync;
         _deviceKey = $"{controller.ProviderId}:{controller.Id}";
         _selectedColor = profile?.AccentColor ?? ControllerProfile.DefaultAccentColor;
+        _selectedLedColor = profile?.LedColor ??
+            (profile?.UseAccentForLed == true ? _selectedColor : ControllerProfile.DefaultAccentColor);
+        _initialLedColor = _selectedLedColor;
+        _selectedLedBrightness = profile?.LedBrightness is <= 2 ? profile.LedBrightness : (byte)0;
+        _initialLedBrightness = _selectedLedBrightness;
+        _parentDeviceKey = profile?.ParentDeviceKey;
         _selectedIconKind = profile?.IconKind;
         DeviceDescription.Text = $"{controller.Name}  •  {controller.Connection}";
         CustomNameTextBox.Text = profile?.CustomName ?? string.Empty;
+        LedOption.Visibility = controller.CanSetLed ? Visibility.Visible : Visibility.Collapsed;
+        CustomLedCheckBox.IsChecked = profile?.LedColor is not null || profile?.UseAccentForLed == true;
+        if (profile?.SyncLedWithProfile == true)
+            CustomLedCheckBox.IsChecked = true;
+        SyncLedWithProfileCheckBox.IsChecked = profile?.SyncLedWithProfile == true;
+        BrightLedBrightness.IsChecked = _selectedLedBrightness == 0;
+        MediumLedBrightness.IsChecked = _selectedLedBrightness == 1;
+        DimLedBrightness.IsChecked = _selectedLedBrightness == 2;
 
         foreach (var (label, kind) in Icons)
         {
@@ -73,6 +95,7 @@ public partial class ProfileWindow : Window
 
         UpdateColorSelection();
         UpdateIconSelection();
+        UpdateLedColorControls();
         SourceInitialized += ProfileWindow_SourceInitialized;
         Loaded += ProfileWindow_Loaded;
         Closing += ProfileWindow_Closing;
@@ -82,6 +105,12 @@ public partial class ProfileWindow : Window
     {
         _selectedColor = (string)((Button)sender).Tag;
         UpdateColorSelection();
+        UpdateLedColorControls();
+        if (IsLoaded && CustomLedCheckBox.IsChecked == true &&
+            SyncLedWithProfileCheckBox.IsChecked == true && _previewLedColorAsync is not null)
+        {
+            _ = _previewLedColorAsync(_selectedColor, _selectedLedBrightness);
+        }
     }
 
     private void UpdateColorSelection()
@@ -122,11 +151,68 @@ public partial class ProfileWindow : Window
     private static Brush ColorBrush(string color) =>
         (Brush)new BrushConverter().ConvertFromString(color)!;
 
+    private void CustomLedCheckBox_Changed(object sender, RoutedEventArgs e) =>
+        UpdateLedColorControls();
+
+    private void SyncLedWithProfileCheckBox_Changed(object sender, RoutedEventArgs e)
+    {
+        UpdateLedColorControls();
+        if (IsLoaded && CustomLedCheckBox.IsChecked == true &&
+            SyncLedWithProfileCheckBox.IsChecked == true && _previewLedColorAsync is not null)
+        {
+            _ = _previewLedColorAsync(_selectedColor, _selectedLedBrightness);
+        }
+    }
+
+    private void LedBrightness_Changed(object sender, RoutedEventArgs e)
+    {
+        if (BrightLedBrightness.IsChecked == true)
+            _selectedLedBrightness = 0;
+        else if (MediumLedBrightness.IsChecked == true)
+            _selectedLedBrightness = 1;
+        else if (DimLedBrightness.IsChecked == true)
+            _selectedLedBrightness = 2;
+
+        if (IsLoaded && CustomLedCheckBox.IsChecked == true && _previewLedColorAsync is not null)
+            _ = _previewLedColorAsync(_selectedLedColor, _selectedLedBrightness);
+    }
+
+    private void UpdateLedColorControls()
+    {
+        if (LedColorControls is null) return;
+        var enabled = CustomLedCheckBox.IsChecked == true;
+        var synced = SyncLedWithProfileCheckBox.IsChecked == true;
+        SyncLedWithProfileCheckBox.IsEnabled = enabled;
+        SyncLedWithProfileCheckBox.Opacity = enabled ? 1 : 0.45;
+        LedColorControls.IsEnabled = enabled && !synced;
+        LedColorControls.Opacity = LedColorControls.IsEnabled ? 1 : 0.45;
+        LedBrightnessControls.IsEnabled = enabled;
+        LedBrightnessControls.Opacity = enabled ? 1 : 0.45;
+        var displayedColor = synced ? _selectedColor : _selectedLedColor;
+        LedColorValue.Text = synced ? $"{displayedColor} · Profile color" : displayedColor;
+        LedColorSwatch.Background = ColorBrush(displayedColor);
+    }
+
+    private void LedColorButton_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new LedColorWindow(_selectedLedColor,
+            color => _previewLedColorAsync?.Invoke(color, _selectedLedBrightness) ?? Task.CompletedTask)
+            { Owner = this };
+        if (dialog.ShowDialog() != true) return;
+        _selectedLedColor = dialog.SelectedColor;
+        UpdateLedColorControls();
+    }
+
     private void Save_Click(object sender, RoutedEventArgs e)
     {
         var customName = CustomNameTextBox.Text.Trim();
         Result = new ControllerProfile(_deviceKey, customName.Length == 0 ? null : customName,
-            _selectedColor, _selectedIconKind);
+            _selectedColor, _selectedIconKind, false,
+            CustomLedCheckBox.IsChecked == true && SyncLedWithProfileCheckBox.IsChecked != true
+                ? _selectedLedColor : null,
+            _selectedLedBrightness,
+            CustomLedCheckBox.IsChecked == true && SyncLedWithProfileCheckBox.IsChecked == true,
+            _parentDeviceKey);
         CloseWithAnimation(true);
     }
 
@@ -170,6 +256,8 @@ public partial class ProfileWindow : Window
     {
         if (_closeAnimationRunning) return;
         _closeAnimationRunning = true;
+        if (!accepted && _previewLedColorAsync is not null)
+            _ = _previewLedColorAsync(_initialLedColor, _initialLedBrightness);
         var fade = new DoubleAnimation(ProfileRoot.Opacity, 0, TimeSpan.FromMilliseconds(120))
         {
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn }

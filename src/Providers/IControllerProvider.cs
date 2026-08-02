@@ -24,6 +24,15 @@ public interface IAttentionPulseControllerProvider
         CancellationToken cancellationToken = default);
 }
 
+public interface IControllerLedProvider
+{
+    Task SetLedColorAsync(ControllerDevice controller, string color, byte brightness = 0,
+        CancellationToken cancellationToken = default);
+
+    Task ResetLedAsync(ControllerDevice controller,
+        CancellationToken cancellationToken = default);
+}
+
 internal static class ControllerIdentification
 {
     internal const int PulseDurationMilliseconds = 450;

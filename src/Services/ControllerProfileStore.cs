@@ -57,11 +57,29 @@ public static class ControllerProfileStore
         if (iconKind is not null && !AllowedIconKinds.Contains(iconKind))
             iconKind = null;
 
+        var parentDeviceKey = string.IsNullOrWhiteSpace(profile.ParentDeviceKey)
+            ? null
+            : profile.ParentDeviceKey.Trim();
+        if (parentDeviceKey?.Equals(profile.DeviceKey, StringComparison.OrdinalIgnoreCase) == true)
+            parentDeviceKey = null;
+
+        var ledColor = profile.LedColor;
+        if (string.IsNullOrWhiteSpace(ledColor) || ledColor.Length != 7 || ledColor[0] != '#' ||
+            !ledColor[1..].All(Uri.IsHexDigit))
+        {
+            // Migrate profiles created when LED color could only mirror the accent.
+            ledColor = profile.UseAccentForLed ? color : null;
+        }
+
         return profile with
         {
             CustomName = name,
             AccentColor = color.ToUpperInvariant(),
-            IconKind = iconKind
+            IconKind = iconKind,
+            UseAccentForLed = false,
+            LedColor = ledColor?.ToUpperInvariant(),
+            LedBrightness = profile.LedBrightness > 2 ? (byte)0 : profile.LedBrightness,
+            ParentDeviceKey = parentDeviceKey
         };
     }
 }

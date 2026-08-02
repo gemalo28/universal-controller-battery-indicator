@@ -130,16 +130,6 @@
           </StackPanel>
         </Border>
 
-        <TextBlock Text="DIAGNOSTICS" Foreground="#8B7CF6" FontSize="11" FontWeight="Bold" Margin="0,24,0,9"/>
-        <Border Background="#22202D" CornerRadius="12" Padding="18" Margin="0,0,0,12">
-          <StackPanel>
-            <TextBlock Text="Advanced controller capture" Foreground="#F4F2FF" FontSize="16" FontWeight="SemiBold"/>
-            <TextBlock Text="Capture controller-class HID descriptors and short raw-report samples for protocol analysis. Keyboards and mice are excluded." Foreground="#9995AA" FontSize="12" TextWrapping="Wrap" Margin="0,5,0,14"/>
-            <Button x:Name="CaptureDiagnosticsButton" Content="Capture controller diagnostics" Click="CaptureDiagnosticsButton_Click" HorizontalAlignment="Left" Margin="0"/>
-            <TextBlock Text="The JSON contains device paths and serial numbers. Review it before sharing." Foreground="#C59063" FontSize="11" TextWrapping="Wrap" Margin="0,9,0,0"/>
-          </StackPanel>
-        </Border>
-
         <!-- Optional diagnostic block: safe to remove with TestLowBatteryButton_Click and its callback. -->
         <TextBlock Text="TEST" Foreground="#8B7CF6" FontSize="11" FontWeight="Bold"
                    Margin="0,24,0,9"/>
@@ -150,6 +140,16 @@
                        Foreground="#9995AA" FontSize="12" TextWrapping="Wrap" Margin="0,5,0,14"/>
             <Button Content="Test low-battery notification" Click="TestLowBatteryButton_Click"
                     HorizontalAlignment="Left" Margin="0" Background="#3A304D"/>
+          </StackPanel>
+        </Border>
+
+        <TextBlock Text="DIAGNOSTICS" Foreground="#8B7CF6" FontSize="11" FontWeight="Bold" Margin="0,24,0,9"/>
+        <Border Background="#22202D" CornerRadius="12" Padding="18" Margin="0,0,0,12">
+          <StackPanel>
+            <TextBlock Text="Advanced controller capture" Foreground="#F4F2FF" FontSize="16" FontWeight="SemiBold"/>
+            <TextBlock Text="Capture controller-class HID descriptors and short raw-report samples for protocol analysis. Keyboards and mice are excluded." Foreground="#9995AA" FontSize="12" TextWrapping="Wrap" Margin="0,5,0,14"/>
+            <Button x:Name="CaptureDiagnosticsButton" Content="Capture controller diagnostics" Click="CaptureDiagnosticsButton_Click" HorizontalAlignment="Left" Margin="0"/>
+            <TextBlock Text="The JSON contains device paths and serial numbers. Review it before sharing." Foreground="#C59063" FontSize="11" TextWrapping="Wrap" Margin="0,9,0,0"/>
           </StackPanel>
         </Border>
       </StackPanel>

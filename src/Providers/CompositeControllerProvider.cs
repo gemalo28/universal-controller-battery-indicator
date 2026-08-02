@@ -7,7 +7,8 @@ namespace ControllerBattery.Providers;
 /// not prevent controller families supported by another backend from appearing.
 /// </summary>
 public sealed class CompositeControllerProvider(IEnumerable<IControllerProvider> providers)
-    : IControllerProvider, IPowerOffControllerProvider, IAttentionPulseControllerProvider
+    : IControllerProvider, IPowerOffControllerProvider, IAttentionPulseControllerProvider,
+      IControllerLedProvider
 {
     private readonly IReadOnlyList<IControllerProvider> _providers = providers.ToArray();
 
@@ -48,6 +49,26 @@ public sealed class CompositeControllerProvider(IEnumerable<IControllerProvider>
         return provider is IAttentionPulseControllerProvider pulseProvider
             ? pulseProvider.PulseAsync(controller, cancellationToken)
             : Task.CompletedTask;
+    }
+
+    public Task SetLedColorAsync(ControllerDevice controller, string color, byte brightness = 0,
+        CancellationToken cancellationToken = default)
+    {
+        var provider = _providers.FirstOrDefault(candidate =>
+            candidate.Id.Equals(controller.ProviderId, StringComparison.OrdinalIgnoreCase));
+        return provider is IControllerLedProvider ledProvider
+            ? ledProvider.SetLedColorAsync(controller, color, brightness, cancellationToken)
+            : throw new NotSupportedException("This controller does not expose LED control.");
+    }
+
+    public Task ResetLedAsync(ControllerDevice controller,
+        CancellationToken cancellationToken = default)
+    {
+        var provider = _providers.FirstOrDefault(candidate =>
+            candidate.Id.Equals(controller.ProviderId, StringComparison.OrdinalIgnoreCase));
+        return provider is IControllerLedProvider ledProvider
+            ? ledProvider.ResetLedAsync(controller, cancellationToken)
+            : throw new NotSupportedException("This controller does not expose LED control.");
     }
 
     private static async Task<IReadOnlyList<ControllerDevice>> ScanSafelyAsync(

@@ -57,6 +57,36 @@
             <WrapPanel x:Name="ColorChoices"/>
           </StackPanel>
         </Border>
+
+        <StackPanel x:Name="LedOption" Visibility="Collapsed">
+          <TextBlock Text="LED LIGHTING" Foreground="#8B7CF6" FontSize="11" FontWeight="Bold" Margin="0,12,0,9"/>
+          <Border Background="#22202D" CornerRadius="12" Padding="18" Margin="0,0,0,12">
+            <StackPanel>
+              <TextBlock Text="Controller LED" Foreground="#F4F2FF" FontSize="16" FontWeight="SemiBold"/>
+              <TextBlock Text="Choose a separate color for the controller's built-in lighting." Foreground="#9995AA" FontSize="12" TextWrapping="Wrap" Margin="0,5,0,14"/>
+              <CheckBox x:Name="CustomLedCheckBox" Foreground="#DCD8E8" VerticalContentAlignment="Center" Content="Set a custom controller LED color" Checked="CustomLedCheckBox_Changed" Unchecked="CustomLedCheckBox_Changed"/>
+              <CheckBox x:Name="SyncLedWithProfileCheckBox" Foreground="#DCD8E8" VerticalContentAlignment="Center" Content="Sync with profile color" Margin="22,10,0,0" Checked="SyncLedWithProfileCheckBox_Changed" Unchecked="SyncLedWithProfileCheckBox_Changed"/>
+              <Grid x:Name="LedColorControls" Margin="22,12,0,0">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <Border x:Name="LedColorSwatch" Width="42" Height="42" CornerRadius="9" BorderBrush="#6C6482" BorderThickness="1" Margin="0,0,12,0"/>
+                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                  <TextBlock Text="LED color" Foreground="#F4F2FF" FontWeight="SemiBold"/>
+                  <TextBlock x:Name="LedColorValue" Foreground="#9995AA" FontSize="12" Margin="0,3,0,0"/>
+                </StackPanel>
+                <Button x:Name="LedColorButton" Grid.Column="2" Content="Change color" Click="LedColorButton_Click" Margin="12,0,0,0"/>
+              </Grid>
+              <StackPanel x:Name="LedBrightnessControls" Margin="22,18,0,0">
+                <TextBlock Text="Brightness" Foreground="#F4F2FF" FontWeight="SemiBold" Margin="0,0,0,9"/>
+                <StackPanel Orientation="Horizontal">
+                  <RadioButton x:Name="BrightLedBrightness" Content="Bright" GroupName="LedBrightness" Foreground="#DCD8E8" Checked="LedBrightness_Changed" Margin="0,0,22,0"/>
+                  <RadioButton x:Name="MediumLedBrightness" Content="Medium" GroupName="LedBrightness" Foreground="#DCD8E8" Checked="LedBrightness_Changed" Margin="0,0,22,0"/>
+                  <RadioButton x:Name="DimLedBrightness" Content="Dim" GroupName="LedBrightness" Foreground="#DCD8E8" Checked="LedBrightness_Changed"/>
+                </StackPanel>
+              </StackPanel>
+            </StackPanel>
+          </Border>
+        </StackPanel>
+
       </StackPanel>
     </ScrollViewer>
     <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="28,16,28,28">
