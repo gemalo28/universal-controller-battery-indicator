@@ -1,0 +1,23 @@
+<Window x:Class="ControllerBattery.OverlayWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Icon="/assets/controller-battery.ico" Width="390" SizeToContent="Height" MaxHeight="520"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        ShowInTaskbar="False" ShowActivated="False" Topmost="True"
+        ResizeMode="NoResize" UseLayoutRounding="True" SnapsToDevicePixels="True">
+  <Border Background="#EE15141D" BorderBrush="#514B68" BorderThickness="1"
+          CornerRadius="16" Padding="18" Effect="{x:Null}">
+    <StackPanel>
+      <Grid Margin="0,0,0,14">
+        <TextBlock Text="Controller battery" Foreground="#F4F2FF" FontSize="18" FontWeight="SemiBold"/>
+        <TextBlock x:Name="ShortcutHint" HorizontalAlignment="Right" VerticalAlignment="Center"
+                   Foreground="#898598" FontSize="11"/>
+      </Grid>
+      <TextBlock x:Name="EmptyText" Text="No controllers connected" Foreground="#9995AA"
+                 Padding="4,12" Visibility="Collapsed"/>
+      <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel x:Name="ControllerRows"/>
+      </ScrollViewer>
+    </StackPanel>
+  </Border>
+</Window>

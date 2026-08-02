@@ -1,0 +1,6 @@
+bin/
+obj/
+.vs/
+.vscode/*.log
+.dotnet-cli-home/
+*.user
