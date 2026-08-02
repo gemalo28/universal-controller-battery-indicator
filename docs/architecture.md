@@ -6,7 +6,7 @@ of whether a device is exposed through XInput, Sony HID, Nintendo HID, or 8BitDo
 
 ## Runtime composition
 
-`MainWindow.CreateHardwareProvider` constructs a `CompositeControllerProvider` from:
+`ControllerProviderFactory` constructs a `CompositeControllerProvider` from:
 
 - `XInputControllerProvider`
 - `DualSenseHidProvider`
@@ -29,12 +29,11 @@ explicit virtual-device relationships.
 
 ## Controller data flow
 
-1. A `DispatcherTimer` in `MainWindow` starts a scan every configured polling interval.
-   The default is 30 seconds; Settings permits 5–300 seconds.
+1. `ControllerMonitoringService` uses an abstract polling timer for configured polling. Manual, initial, post-action, and overlay refreshes share its serialized path. Request sequencing suppresses stale snapshots, and shutdown cancels active work.
 2. Each provider translates its native observation into `ControllerDevice`.
 3. `CompositeControllerProvider` combines provider results and removes duplicate
    observations that have the same provider-scoped key.
-4. `MainWindow.ApplyProfiles` overlays presentation-only profile data such as custom
+4. `ControllerProfileService.Apply` overlays presentation-only profile data such as custom
    name, accent, and icon onto the detected snapshot.
 5. Pending DualSense LED profiles and low-battery transitions are processed.
 6. The navigation, selected detail view, counters, and visible overlay are rendered
@@ -204,7 +203,7 @@ to keep the underlying drop target's HWND reachable.
 %LOCALAPPDATA%\ControllerBattery\settings.json
 ```
 
-`MainWindow` registers the global overlay shortcut with `RegisterHotKey` and rejects a
+`MainWindow` registers the global overlay shortcut through `GlobalHotkeyInterop` and rejects a
 new shortcut if another application owns it. Changes to the shortcut, corner, or
 polling interval apply immediately.
 
@@ -215,7 +214,7 @@ games can still own the final display surface and cover ordinary desktop overlay
 
 ## Notifications
 
-`MainWindow` tracks controller keys currently in a low state. A notification is shown
+`LowBatteryService` tracks controller keys currently in a low state. A notification is shown
 only on transition into `Empty` or `Low`, preventing a popup on every poll. The state is
 removed when the controller recovers or disconnects, allowing a future low transition
 to notify again.
@@ -239,8 +238,10 @@ instead of aborting the entire capture.
 
 ## Presentation structure
 
-- `MainWindow` owns scanning, selection, profile projection, grouping, notifications,
-  LED reapplication, the hotkey, and overlay lifetime.
+- `ControllerMonitoringService` owns polling, serialized scans, cancellation, and raw snapshots.
+- `ControllerProfileService` and `LowBatteryService` own profile projection and low transitions.
+- `MainWindow` owns selection, WPF rendering, grouping gestures, LED follow-up, hotkey wiring,
+  dialogs, and overlay lifetime.
 - `OverlayWindow` renders the current normalized snapshot without activating.
 - `ProfileWindow` edits identity, appearance, and capability-gated LED preferences.
 - `LedColorWindow` provides suggested colors, editable hexadecimal input, RGB sliders,
@@ -252,7 +253,7 @@ instead of aborting the entire capture.
 
 ## Adding a provider
 
-1. Implement `IControllerProvider` under `src/Providers`.
+1. Implement `IControllerProvider` under `src/ControllerBattery/Providers`; contracts live in `Providers/Abstractions`.
 2. Keep native interop, discovery, report parsing, timeouts, and protocol quirks inside
    the provider.
 3. Return stable IDs whenever the transport exposes them.
@@ -261,9 +262,49 @@ instead of aborting the entire capture.
 5. Implement only the optional capability interfaces the backend can safely support,
    and set matching `ControllerDevice` capability flags per transport.
 6. Make output operations cancellation-aware and ensure rumble is stopped in `finally`.
-7. Register the provider in `MainWindow.CreateHardwareProvider`.
+7. Register the provider in `ControllerProviderFactory`.
 8. Verify that backend failure does not suppress other provider results and that the
    same physical collection is not emitted twice by that provider.
 
 Cross-provider automatic merging should not be added without a verified shared hardware
 identity. Prefer an explicit user relationship when APIs expose only transient indexes.
+
+## Repository and test boundaries
+
+Production code lives in `src/ControllerBattery`: WPF windows are in `Views`, static resources
+in `Assets`, native helpers in `Interop`, provider contracts in `Providers/Abstractions`, and
+testable orchestration in `Services`. Moving files did not change namespaces or local-data paths,
+so serialized settings and profiles remain compatible. Icons are WPF resources referenced with
+`/Assets/...` pack paths; editable/source artwork remains a non-runtime `None` item.
+
+`ControllerMonitoringService` owns polling, refresh serialization, cancellation, raw snapshots,
+stale-result suppression, and scan events without referencing WPF. `ControllerProfileService`
+owns profile normalization/application, and `LowBatteryService` owns low-state transitions.
+`ControllerActionService` routes identify, power-off, and LED capabilities. `MainWindow` retains
+selection, visual rendering, grouping gestures, dialogs, hotkey wiring, animations, and overlay
+window lifetime.
+
+Tests live in `tests/ControllerBattery.Tests` and neither enumerate hardware nor start WPF
+windows. Handwritten providers and polling timers make concurrency deterministic. Sanitized or
+specification-derived report bytes live under `Fixtures/HidReports`; they contain no serial
+numbers, Bluetooth addresses, or device paths. Placeholder files document future scopes without
+fake passing or skipped tests.
+
+## Coverage roadmap
+
+Coverage is collected with `coverlet.collector` and `coverage.runsettings`:
+
+```powershell
+dotnet test ControllerBattery.sln --settings coverage.runsettings --collect:"XPlat Code Coverage"
+```
+
+The current baseline is **12.01% line coverage (258/2148)** and the long-term target is **90%**.
+Only generated XAML/compiler output is excluded. CI records coverage without enforcing a threshold
+until a stable CI baseline is available; enforcement should then start at that measured baseline
+and increase monotonically. It must never be lowered.
+
+Priority gaps are controller action coordination, provider output-report generation, diagnostics,
+persistence fault injection, presentation-state projection, and isolated code-behind behavior.
+New business logic, parsing, migrations, and bug fixes require meaningful tests. Physical device
+enumeration, Bluetooth disconnect, rumble, LED ownership conflicts, overlay behavior over games,
+and visual appearance still require manual Windows hardware/UI validation.

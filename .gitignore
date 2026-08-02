@@ -4,3 +4,8 @@ obj/
 .vscode/*.log
 .dotnet-cli-home/
 *.user
+TestResults/
+CoverageResults/
+*CoverageResults/
+coverage-report/
+publish-validation/

@@ -113,14 +113,29 @@ Requirements:
 From PowerShell:
 
 ```powershell
-dotnet run
+dotnet run --project src/ControllerBattery/ControllerBattery.csproj
 ```
 
 Build and publish with:
 
 ```powershell
-dotnet build -c Release
-dotnet publish -c Release -r win-x64 --self-contained true
+dotnet build ControllerBattery.sln -c Release
+dotnet publish src/ControllerBattery/ControllerBattery.csproj -c Release -r win-x64 --self-contained true
+```
+
+Run tests and collect coverage with:
+
+```powershell
+dotnet test ControllerBattery.sln
+dotnet test ControllerBattery.sln --settings coverage.runsettings --collect:"XPlat Code Coverage"
+```
+
+For an optional local HTML report, install ReportGenerator and point it at the generated
+Cobertura file:
+
+```powershell
+dotnet tool install --global dotnet-reportgenerator-globaltool
+reportgenerator -reports:"**/coverage.cobertura.xml" -targetdir:"coverage-report"
 ```
 
 ## Local data
@@ -135,21 +150,27 @@ Saved settings include the overlay shortcut, overlay position, and polling inter
 Profile data includes names, colors, icons, LED preferences, and explicit virtual-device
 grouping relationships.
 
-## Architecture
+## Repository structure and testing
 
-- `ControllerBattery.csproj` configures the .NET 10 WPF application.
-- `src/MainWindow.xaml` and `src/MainWindow.xaml.cs` contain the dashboard and primary
-  application behavior.
-- `src/OverlayWindow.xaml` contains the compact in-game battery view.
-- `src/SettingsWindow.xaml`, `src/ProfileWindow.xaml`, and `src/AboutWindow.xaml`
-  contain the supporting windows.
-- `src/LowBatteryNotificationWindow.xaml` contains low-battery alerts.
-- `src/LedColorWindow.xaml` provides exact color entry and live LED preview.
-- `src/Models` contains normalized settings, profile, battery, and controller models.
-- `src/Providers` contains the composite provider contract and protocol-specific
-  XInput, DualSense, Switch Pro, and 8BitDo implementations.
-- `src/Services` contains persistence, display placement, and diagnostics services.
-- `docs/architecture.md` explains how additional controller providers plug in.
+- `src/ControllerBattery` is the WPF production project. `Views` owns windows and visual
+  code-behind; `Models` owns normalized records; `Providers/Abstractions` owns capability
+  contracts; `Providers` owns protocols; `Services` owns monitoring and business logic;
+  `Interop` owns native helpers; and `Behaviors` owns reusable WPF behavior.
+- `src/ControllerBattery/Assets` contains all original icons and source artwork. Runtime icons
+  remain WPF `Resource` items and use `/Assets/...` pack paths; source artwork remains `None`.
+- `tests/ControllerBattery.Tests` mirrors production concerns. `Fixtures` holds sanitized samples,
+  `Fakes` holds controllable infrastructure, and the other folders hold focused tests.
+- `docs/architecture.md` describes runtime boundaries and the coverage roadmap.
+
+The post-refactor baseline is **12.01% line coverage (258/2148 lines)**. Only generated XAML and
+compiler output are excluded; code-behind, providers, services, models, persistence, and parsing
+are not broadly excluded. The long-term target is **90%**. New business logic, protocol parsing,
+migrations, and bug fixes should include meaningful tests.
+
+The next coverage areas are provider output generation, action coordination, persistence fault
+injection, presentation-state projection, and isolated WPF behavior. Hardware enumeration,
+Bluetooth disconnect, physical rumble/LED behavior, and overlay rendering over games require
+manual Windows/controller validation.
 
 Controller Battery is an independent project and is not affiliated with Sony,
 Microsoft, Nintendo, 8BitDo, Valve, DS4Windows, or other controller manufacturers and
