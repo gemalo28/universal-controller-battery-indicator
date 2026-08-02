@@ -1,0 +1,6 @@
+# Model: generic 8BitDo enhanced-mode controller
+# Connection: Bluetooth
+# Report: 0x01 enhanced input; power byte 14 = 0x4B
+# Expected: 75%, not charging
+# Origin: specification-derived sanitized sample
+01 00 00 00 00 00 00 00 00 00 00 00 00 00 4B

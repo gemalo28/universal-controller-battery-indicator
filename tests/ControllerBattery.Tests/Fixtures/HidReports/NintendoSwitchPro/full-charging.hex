@@ -1,0 +1,6 @@
+# Model: Nintendo Switch Pro Controller
+# Connection: Bluetooth
+# Report: 0x30 full input; battery byte 2 = 0x90
+# Expected: full, charging
+# Origin: specification-derived sanitized sample
+30 00 90

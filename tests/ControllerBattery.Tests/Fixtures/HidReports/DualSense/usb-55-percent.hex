@@ -1,0 +1,9 @@
+# Model: Sony DualSense
+# Connection: USB
+# Report: 0x01 input report; status byte 53 = 0x05
+# Expected: 55%, not charging
+# Origin: specification-derived sanitized sample; all unspecified bytes are 00
+01 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+00 00 00 00 00 05 00 00 00 00 00 00 00 00 00 00
