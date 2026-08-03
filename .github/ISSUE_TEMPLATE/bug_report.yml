@@ -1,0 +1,44 @@
+name: Bug report
+description: Report reproducible incorrect behavior in Controller Battery.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Do not include serial numbers, Bluetooth addresses, or unreviewed diagnostics.
+  - type: input
+    id: version
+    attributes:
+      label: Controller Battery version
+      placeholder: 0.3.0
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      placeholder: Windows 11 24H2
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior and reproduction steps
+    validations:
+      required: true
+  - type: textarea
+    id: controllers
+    attributes:
+      label: Controllers and connection methods
+      description: Include relevant controller models, USB/Bluetooth/adapter mode, and translation software.
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Add sanitized logs or screenshots. Review diagnostic captures before uploading.

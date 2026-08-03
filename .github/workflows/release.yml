@@ -1,0 +1,96 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Validate release version
+        id: version
+        shell: pwsh
+        run: |
+          [xml]$project = Get-Content ./src/ControllerBattery/ControllerBattery.csproj -Raw
+          $version = [string]$project.Project.PropertyGroup.Version
+          if ('${{ github.ref_name }}' -ne "v$version") {
+            throw "Tag '${{ github.ref_name }}' must match project version 'v$version'."
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - run: dotnet restore ControllerBattery.sln --runtime win-x64
+      - run: dotnet build ControllerBattery.sln --configuration Release --no-restore
+      - run: dotnet test ControllerBattery.sln --configuration Release --no-build --settings coverage.runsettings --collect:"XPlat Code Coverage" --logger trx --results-directory TestResults
+
+      - name: Enforce 90% line coverage
+        shell: pwsh
+        run: ./scripts/Assert-Coverage.ps1 -ResultsPath TestResults -MinimumLineCoverage 90
+
+      - name: Build portable release
+        shell: pwsh
+        run: ./scripts/Build-Release.ps1 -ExpectedVersion '${{ steps.version.outputs.version }}' -NoRestore
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $iscc = (Get-Command iscc.exe -ErrorAction SilentlyContinue).Source
+          if (-not $iscc) {
+            $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          }
+          if (-not (Test-Path -LiteralPath $iscc)) {
+            throw 'Inno Setup compiler was not found on the release runner.'
+          }
+          $publish = (Resolve-Path ./artifacts/publish/win-x64).Path
+          $output = (Resolve-Path ./artifacts/release).Path
+          & $iscc "/DMyAppVersion=${{ steps.version.outputs.version }}" "/DPublishDir=$publish" "/DOutputDir=$output" ./installer/ControllerBattery.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE." }
+
+      - name: Generate checksums
+        shell: pwsh
+        run: ./scripts/New-ReleaseChecksums.ps1
+
+      - name: Attest release artifacts
+        uses: actions/attest@v4
+        with:
+          subject-path: artifacts/release/*
+
+      - name: Create draft GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $arguments = @(
+            'release', 'create', '${{ github.ref_name }}',
+            '--verify-tag', '--draft', '--generate-notes',
+            '--title', 'Controller Battery ${{ github.ref_name }}'
+          )
+          if ('${{ github.ref_name }}'.Contains('-')) { $arguments += '--prerelease' }
+          $arguments += (Get-ChildItem ./artifacts/release -File | ForEach-Object FullName)
+          & gh @arguments
+          if ($LASTEXITCODE -ne 0) { throw "GitHub release creation failed with exit code $LASTEXITCODE." }
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: release-${{ github.ref_name }}
+          path: artifacts/release
+          if-no-files-found: warn

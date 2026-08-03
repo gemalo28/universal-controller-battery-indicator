@@ -1,0 +1,41 @@
+name: Controller compatibility report
+description: Report working or incomplete behavior for a controller or adapter.
+title: "[Controller]: "
+labels: [controller-compatibility]
+body:
+  - type: input
+    id: model
+    attributes:
+      label: Exact controller or adapter model
+    validations:
+      required: true
+  - type: dropdown
+    id: connection
+    attributes:
+      label: Connection
+      options: [USB, Bluetooth, 2.4 GHz receiver, Other]
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+    validations:
+      required: true
+  - type: checkboxes
+    id: behavior
+    attributes:
+      label: Observed functionality
+      options:
+        - label: Controller is detected
+        - label: Battery state is shown
+        - label: Charging state is shown
+        - label: Connect/disconnect notification works
+        - label: Identify/rumble works
+        - label: Power off works when offered
+        - label: LED control works when offered
+  - type: textarea
+    id: software
+    attributes:
+      label: Controller software and notes
+      description: Mention Steam Input, DS4Windows, BetterJoy, HidHide, firmware, or unusual adapters.

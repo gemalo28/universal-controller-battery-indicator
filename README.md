@@ -8,6 +8,24 @@ notifications.
 > Controller Battery requires Windows 10 or Windows 11. Battery detail and available
 > actions depend on what each controller, adapter, and driver exposes to Windows.
 
+## Download and install
+
+Download the latest build from [GitHub Releases](https://github.com/gemalo28/universal-controller-battery-indicator/releases/latest).
+Each release provides two Windows x64 options:
+
+- **Setup** installs Controller Battery for the current user, creates Start Menu and
+  optional desktop shortcuts, and supports clean upgrades and uninstall.
+- **Portable** is a self-contained ZIP. Extract the entire archive to a stable folder and
+  run `ControllerBattery.exe`; no separate .NET installation is required.
+
+Release assets include `SHA256SUMS.txt` and GitHub build-provenance attestations. Preview
+builds may be unsigned and can display a Microsoft Defender SmartScreen warning. Confirm
+that the download came from this repository and verify its checksum before running it.
+
+Portable users who enable **Start with Windows** should not move the executable afterward;
+the startup entry points to its current location. Settings and profiles remain under
+`%LOCALAPPDATA%\ControllerBattery` for both installation types.
+
 ## Highlights
 
 - Monitors Xbox/XInput, DualSense, Switch Pro, and supported 8BitDo controllers.
@@ -191,7 +209,13 @@ controller reports. Review a capture before sharing it publicly.
 
 See the [Developer guidelines](docs/development.md) for source setup, watch mode, builds,
 tests, project boundaries, contribution rules, and hardware validation. The deeper runtime
-design is documented in [Application architecture](docs/architecture.md).
+design is documented in [Application architecture](docs/architecture.md). Maintainers
+should also follow the [Release guide](docs/releasing.md). See [Contributing](CONTRIBUTING.md),
+[Security](SECURITY.md), and the [Changelog](CHANGELOG.md) for project policies and history.
+
+## License
+
+Controller Battery is open-source software available under the [MIT License](LICENSE).
 
 Controller Battery is an independent project and is not affiliated with Sony, Microsoft,
 Nintendo, 8BitDo, Valve, DS4Windows, BetterJoy, or other controller manufacturers and

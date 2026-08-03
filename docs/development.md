@@ -40,6 +40,17 @@ dotnet test ControllerBattery.sln -c Release
 dotnet publish src/ControllerBattery/ControllerBattery.csproj -c Release -r win-x64 --self-contained true
 ```
 
+To reproduce the portable release layout and ZIP used by GitHub Releases:
+
+```powershell
+./scripts/Build-Release.ps1
+```
+
+The release script uses the checked-in `win-x64` publish profile, keeps trimming disabled
+for WPF compatibility, and writes ignored output beneath `artifacts/`. See the
+[release guide](releasing.md) for installer compilation, versioning, tags, checksums,
+attestations, signing, and final smoke testing.
+
 Collect coverage with the checked-in settings:
 
 ```powershell
