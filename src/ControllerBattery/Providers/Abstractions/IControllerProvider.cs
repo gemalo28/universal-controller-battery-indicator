@@ -10,6 +10,11 @@ public interface IControllerProvider
         CancellationToken cancellationToken = default);
 }
 
+public interface IProviderScanDiagnostics
+{
+    IReadOnlyList<ProviderScanDiagnostic> LastScanDiagnostics { get; }
+}
+
 public interface IPowerOffControllerProvider
 {
     Task PowerOffAsync(

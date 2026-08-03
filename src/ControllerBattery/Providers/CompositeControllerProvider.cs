@@ -12,18 +12,22 @@ public sealed class CompositeControllerProvider(
     IEnumerable<IControllerProvider> providers,
     Action<ProviderScanDiagnostic>? diagnosticSink = null)
     : IControllerProvider, IPowerOffControllerProvider, IAttentionPulseControllerProvider,
-      IControllerLedProvider
+      IControllerLedProvider, IProviderScanDiagnostics
 {
     private readonly IReadOnlyList<IControllerProvider> _providers = providers.ToArray();
     private readonly Action<ProviderScanDiagnostic> _diagnosticSink = diagnosticSink ?? LogDiagnostic;
 
     public string Id => "composite";
+    public IReadOnlyList<ProviderScanDiagnostic> LastScanDiagnostics { get; private set; } = [];
 
     public async Task<IReadOnlyList<ControllerDevice>> GetControllersAsync(
         CancellationToken cancellationToken = default)
     {
         var scans = _providers.Select(provider => ScanSafelyAsync(provider, cancellationToken));
-        var observations = (await Task.WhenAll(scans)).SelectMany(result => result);
+        var scanResults = await Task.WhenAll(scans);
+        LastScanDiagnostics = scanResults.Select(result => result.Diagnostic).ToArray();
+        foreach (var diagnostic in LastScanDiagnostics) _diagnosticSink(diagnostic);
+        var observations = scanResults.SelectMany(result => result.Controllers);
 
         return observations
             .GroupBy(device => $"{device.ProviderId}:{device.Id}", StringComparer.OrdinalIgnoreCase)
@@ -39,7 +43,8 @@ public sealed class CompositeControllerProvider(
             candidate.Id.Equals(controller.ProviderId, StringComparison.OrdinalIgnoreCase));
         if (provider is not IPowerOffControllerProvider powerProvider)
         {
-            throw new NotSupportedException("This controller cannot be turned off by its provider.");
+            throw new NotSupportedException(
+                $"Controller provider '{controller.ProviderId}' does not support power off.");
         }
 
         return powerProvider.PowerOffAsync(controller, cancellationToken);
@@ -53,7 +58,8 @@ public sealed class CompositeControllerProvider(
             candidate.Id.Equals(controller.ProviderId, StringComparison.OrdinalIgnoreCase));
         return provider is IAttentionPulseControllerProvider pulseProvider
             ? pulseProvider.PulseAsync(controller, cancellationToken)
-            : Task.CompletedTask;
+            : throw new NotSupportedException(
+                $"Controller provider '{controller.ProviderId}' does not support identification.");
     }
 
     public Task SetLedColorAsync(ControllerDevice controller, string color, byte brightness = 0,
@@ -63,7 +69,8 @@ public sealed class CompositeControllerProvider(
             candidate.Id.Equals(controller.ProviderId, StringComparison.OrdinalIgnoreCase));
         return provider is IControllerLedProvider ledProvider
             ? ledProvider.SetLedColorAsync(controller, color, brightness, cancellationToken)
-            : throw new NotSupportedException("This controller does not expose LED control.");
+            : throw new NotSupportedException(
+                $"Controller provider '{controller.ProviderId}' does not support LED control.");
     }
 
     public Task ResetLedAsync(ControllerDevice controller,
@@ -73,10 +80,11 @@ public sealed class CompositeControllerProvider(
             candidate.Id.Equals(controller.ProviderId, StringComparison.OrdinalIgnoreCase));
         return provider is IControllerLedProvider ledProvider
             ? ledProvider.ResetLedAsync(controller, cancellationToken)
-            : throw new NotSupportedException("This controller does not expose LED control.");
+            : throw new NotSupportedException(
+                $"Controller provider '{controller.ProviderId}' does not support LED control.");
     }
 
-    private async Task<IReadOnlyList<ControllerDevice>> ScanSafelyAsync(
+    private async Task<ProviderScanResult> ScanSafelyAsync(
         IControllerProvider provider,
         CancellationToken cancellationToken)
     {
@@ -84,8 +92,7 @@ public sealed class CompositeControllerProvider(
         try
         {
             var results = await provider.GetControllersAsync(cancellationToken);
-            _diagnosticSink(new(provider.Id, stopwatch.Elapsed, results.Count, null));
-            return results;
+            return new(results, new(provider.Id, stopwatch.Elapsed, results.Count, null));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -93,10 +100,12 @@ public sealed class CompositeControllerProvider(
         }
         catch (Exception exception)
         {
-            _diagnosticSink(new(provider.Id, stopwatch.Elapsed, 0, exception));
-            return [];
+            return new([], new(provider.Id, stopwatch.Elapsed, 0, exception));
         }
     }
+
+    private sealed record ProviderScanResult(IReadOnlyList<ControllerDevice> Controllers,
+        ProviderScanDiagnostic Diagnostic);
 
     private static void LogDiagnostic(ProviderScanDiagnostic diagnostic)
     {

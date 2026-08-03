@@ -10,6 +10,7 @@ using ControllerBattery.Models;
 using ControllerBattery.Providers;
 using ControllerBattery.Services;
 using ControllerBattery.Interop;
+using System.ComponentModel;
 
 namespace ControllerBattery;
 
@@ -43,6 +44,7 @@ public partial class MainWindow : Window
     private ControllerDragPopup? _controllerDragPopup;
     private const string ControllerDragFormat = "ControllerBattery.ControllerDeviceKey";
     private long _latestSnapshotSequence;
+    private bool _shutdownComplete;
 
     public MainWindow()
     {
@@ -58,15 +60,11 @@ public partial class MainWindow : Window
         SourceInitialized += MainWindow_SourceInitialized;
         Loaded += async (_, _) =>
         {
-            _monitoringService.Start(TimeSpan.FromSeconds(_settings.PollingIntervalSeconds),
+            await _monitoringService.StartAsync(TimeSpan.FromSeconds(_settings.PollingIntervalSeconds),
                 App.LifetimeToken);
             await RefreshControllersAsync();
         };
-        Closing += (_, _) =>
-        {
-            _monitoringService.Stop();
-            App.CancelLifetime();
-        };
+        Closing += MainWindow_Closing;
         Closed += (_, _) =>
         {
             UnregisterOverlayHotkey();
@@ -101,7 +99,7 @@ public partial class MainWindow : Window
         ControllerSnapshotEventArgs e)
     {
         Interlocked.Exchange(ref _latestSnapshotSequence, e.Sequence);
-        await Dispatcher.InvokeAsync(() => ApplySnapshotAsync(e)).Task.Unwrap();
+        await RunOnUiAsync(() => ApplySnapshotAsync(e));
     }
 
     private async Task ApplySnapshotAsync(ControllerSnapshotEventArgs e)
@@ -119,8 +117,12 @@ public partial class MainWindow : Window
         var count = PresentationControllers().Count;
         DeviceCount.Text = count.ToString();
         EmptyState.Visibility = count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        StatusText.Text = count == 0 ? "No controllers found" : "Monitoring";
-        StatusDot.Fill = count == 0 ? OfflineBrush : ChargingBrush;
+        var degraded = e.ProviderDiagnostics.Any(diagnostic => diagnostic.Exception is not null);
+        StatusText.Text = degraded
+            ? count == 0 ? "No controllers found · Some providers unavailable" :
+                "Monitoring · Some providers unavailable"
+            : count == 0 ? "No controllers found" : "Monitoring";
+        StatusDot.Fill = degraded ? WarningBrush : count == 0 ? OfflineBrush : ChargingBrush;
         LastUpdated.Text = $"Last scan: {DateTime.Now:h:mm:ss tt}";
         var selected = _controllers.FirstOrDefault(device => DeviceKey(device) == _selectedId);
         if (selected is not null) ShowControllerDetail(selected);
@@ -129,12 +131,33 @@ public partial class MainWindow : Window
 
     private void MonitoringService_ScanFailed(object? sender, ControllerScanErrorEventArgs e)
     {
-        Dispatcher.Invoke(() =>
+        RunOnUi(() =>
         {
             StatusText.Text = "Scan failed";
             StatusDot.Fill = CriticalBrush;
             if (_scanErrorReporter.TryReport()) LastUpdated.Text = $"Scan error: {e.Exception.Message}";
         });
+    }
+
+    private void RunOnUi(Action action) => _ = Dispatcher.InvokeAsync(action);
+
+    private Task RunOnUiAsync(Func<Task> action) =>
+        Dispatcher.InvokeAsync(action).Task.Unwrap();
+
+    private async void MainWindow_Closing(object? sender, CancelEventArgs e)
+    {
+        if (_shutdownComplete) return;
+        e.Cancel = true;
+        App.CancelLifetime();
+        try
+        {
+            await _monitoringService.DisposeAsync();
+        }
+        finally
+        {
+            _shutdownComplete = true;
+            Close();
+        }
     }
 
     private void RenderControllerList()
@@ -818,11 +841,10 @@ public partial class MainWindow : Window
         try
         {
             await _controllerActions.PowerOffAsync(controller, App.LifetimeToken);
-            await Task.Delay(750, App.LifetimeToken);
-            await RefreshControllersAsync();
-            if (_controllers.Any(device => DeviceKey(device) == DeviceKey(controller)))
+            if (!await ConfirmControllerDisconnectedAsync(controller, App.LifetimeToken))
             {
-                throw new IOException("The controller accepted the disconnect request but reconnected immediately.");
+                throw new IOException(
+                    "The controller accepted the disconnect request but still appears connected. It may need another moment to turn off.");
             }
         }
         catch (OperationCanceledException) when (App.LifetimeToken.IsCancellationRequested) { }
@@ -835,6 +857,22 @@ public partial class MainWindow : Window
         {
             PowerOffButton.IsEnabled = true;
         }
+    }
+
+    private async Task<bool> ConfirmControllerDisconnectedAsync(ControllerDevice controller,
+        CancellationToken cancellationToken)
+    {
+        const int confirmationAttempts = 4;
+        var deviceKey = DeviceKey(controller);
+        for (var attempt = 0; attempt < confirmationAttempts; attempt++)
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(600), cancellationToken);
+            await _monitoringService.RefreshAsync(cancellationToken);
+            if (!_monitoringService.LatestSnapshot.Any(device => DeviceKey(device) == deviceKey))
+                return true;
+        }
+
+        return false;
     }
 
     private async void IdentifyButton_Click(object sender, RoutedEventArgs e)
@@ -874,7 +912,8 @@ public partial class MainWindow : Window
 
         _profiles.TryGetValue(DeviceKey(controller), out var existing);
         var dialog = new ProfileWindow(controller, existing,
-            (color, brightness) => PreviewLedColorAsync(controller, color, brightness)) { Owner = this };
+            (color, brightness) => PreviewLedColorAsync(controller, color, brightness))
+        { Owner = this };
         bool? accepted;
         SetModalBackdrop(true);
         try
@@ -1036,7 +1075,7 @@ public partial class MainWindow : Window
             GlobalHotkeyInterop.Unregister(handle, OverlayHotkeyId);
     }
 
-    private void SettingsButton_Click(object sender, RoutedEventArgs e)
+    private async void SettingsButton_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new SettingsWindow(_settings, ShowTestLowBatteryNotification) { Owner = this };
         bool? accepted;
@@ -1074,7 +1113,7 @@ public partial class MainWindow : Window
             return;
         }
         _settings = updated;
-        _monitoringService.Start(TimeSpan.FromSeconds(_settings.PollingIntervalSeconds),
+        await _monitoringService.StartAsync(TimeSpan.FromSeconds(_settings.PollingIntervalSeconds),
             App.LifetimeToken);
         UpdatePollingText();
         UpdateOverlayTip();

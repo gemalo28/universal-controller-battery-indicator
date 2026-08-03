@@ -43,6 +43,15 @@ The overlay does not own a separate polling loop. A visible `OverlayWindow` rece
 every successful main polling snapshot, and opening it also requests a fresh provider
 scan. This keeps the dashboard and overlay consistent.
 
+Polling lifecycle operations are asynchronous. Starting with a new interval first cancels and
+awaits the previous loop, while `StopAsync` stops polling without permanently shutting down the
+service. Disposal permanently cancels and awaits polling plus active refresh work. Manual and
+scheduled scans continue through the same semaphore and request sequence.
+
+`SnapshotUpdated` and `ScanFailed` are raised on the scan thread. The monitoring service has no
+WPF dependency; subscribers must marshal UI work. `MainWindow` uses one dispatcher boundary
+before changing controls, overlay visuals, or presentation state.
+
 ## Normalized model
 
 `ControllerDevice` contains:
@@ -85,6 +94,17 @@ Optional behavior is expressed through provider interfaces and per-device flags:
 
 The composite routes each operation to the provider whose `Id` matches the device's
 `ProviderId`. The UI tests capabilities rather than branching on vendor names.
+
+`ControllerActionService` owns action policy: it validates `CanPowerOff`, `CanIdentify`, and
+`CanSetLed` before delegating. Unsupported flags and capability/provider mismatches throw clear
+`NotSupportedException` messages. `CompositeControllerProvider` remains defensive and routes a
+capable device only to the provider matching its `ProviderId`.
+
+Each composite scan publishes `ProviderScanDiagnostic` entries containing provider ID, duration,
+result count, and an optional exception. Partial provider failures remain isolated and logged;
+the successful snapshot carries diagnostics to monitoring so the existing status area can show a
+nonmodal degraded indication. A later fully successful scan replaces those diagnostics and clears
+the indication. Application cancellation still propagates instead of becoming a partial failure.
 
 Identification and low-battery attention use the shared constants in
 `ControllerIdentification`: a 450 ms pulse with 50 ms keepalive writes. Providers own

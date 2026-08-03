@@ -1,6 +1,7 @@
 using ControllerBattery.Models;
 using ControllerBattery.Services;
 using ControllerBattery.Tests.Fakes;
+using ControllerBattery.Providers;
 
 namespace ControllerBattery.Tests.Services;
 
@@ -21,14 +22,18 @@ public sealed class ControllerMonitoringServiceTests
         });
         provider.Enqueue(_ => Task.FromResult<IReadOnlyList<ControllerDevice>>([Device("new")]));
         await using var service = new ControllerMonitoringService(provider, timer);
-        service.Start(TimeSpan.FromSeconds(1), TestContext.Current.CancellationToken);
+        await service.StartAsync(TimeSpan.FromSeconds(1), TestContext.Current.CancellationToken);
         var manual = service.RefreshAsync(TestContext.Current.CancellationToken);
         await firstStarted.Task;
-        timer.Tick();
-        await WaitUntilAsync(() => provider.ScanCount == 1);
+        var updated = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        service.SnapshotUpdated += (_, args) =>
+        {
+            if (args.Controllers.FirstOrDefault()?.Id == "new") updated.SetResult();
+        };
+        await timer.TickAsync();
         releaseFirst.SetResult();
         await manual;
-        await WaitUntilAsync(() => service.LatestSnapshot.FirstOrDefault()?.Id == "new");
+        await updated.Task.WaitAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(1, provider.MaximumConcurrentScans);
         Assert.Equal("new", Assert.Single(service.LatestSnapshot).Id);
@@ -76,7 +81,7 @@ public sealed class ControllerMonitoringServiceTests
         var scan = service.RefreshAsync();
 #pragma warning restore xUnit1051
         await started.Task;
-        service.Stop();
+        await service.DisposeAsync();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => scan);
         Assert.Equal(0, errors);
@@ -85,9 +90,76 @@ public sealed class ControllerMonitoringServiceTests
     private static ControllerDevice Device(string id) => new(id, "fake", id, "Test", "Wireless",
         50, BatteryLevel.Medium, false, DateTime.UnixEpoch);
 
-    private static async Task WaitUntilAsync(Func<bool> condition)
+    [Fact]
+    public async Task Restart_StopsPreviousLoopBeforeCreatingNext()
     {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-        while (!condition()) await Task.Delay(10, timeout.Token);
+        var timer = new FakePollingTimer();
+        await using var service = new ControllerMonitoringService(new FakeControllerProvider(), timer);
+        var token = TestContext.Current.CancellationToken;
+        await service.StartAsync(TimeSpan.FromSeconds(1), token);
+        await service.StartAsync(TimeSpan.FromSeconds(2), token);
+        await service.StartAsync(TimeSpan.FromSeconds(3), token);
+        Assert.Equal(3, timer.CreatedCount);
+        Assert.Equal(1, timer.ActiveCount);
+        Assert.Equal(1, timer.MaximumActiveCount);
+    }
+
+    [Fact]
+    public async Task Stop_AllowsPollingToStartAgain()
+    {
+        var timer = new FakePollingTimer();
+        await using var service = new ControllerMonitoringService(new FakeControllerProvider(), timer);
+        var token = TestContext.Current.CancellationToken;
+        await service.StartAsync(TimeSpan.FromSeconds(1), token);
+        await service.StopAsync();
+        Assert.Equal(0, timer.ActiveCount);
+        await service.StartAsync(TimeSpan.FromSeconds(1), token);
+        Assert.Equal(1, timer.ActiveCount);
+    }
+
+    [Fact]
+    public async Task Dispose_CancelsAndAwaitsActivePollingRefresh()
+    {
+        var provider = new FakeControllerProvider();
+        var timer = new FakePollingTimer();
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var canceled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        provider.Enqueue(async token =>
+        {
+            started.SetResult();
+            try { await Task.Delay(Timeout.InfiniteTimeSpan, token); }
+            catch (OperationCanceledException) { canceled.SetResult(); throw; }
+            return [];
+        });
+        var service = new ControllerMonitoringService(provider, timer);
+        await service.StartAsync(TimeSpan.FromSeconds(1), TestContext.Current.CancellationToken);
+        await timer.TickAsync();
+        await started.Task.WaitAsync(TestContext.Current.CancellationToken);
+        await service.DisposeAsync();
+        Assert.True(canceled.Task.IsCompletedSuccessfully);
+        Assert.Equal(0, timer.ActiveCount);
+    }
+
+    [Fact]
+    public async Task PartialProviderDiagnostics_ArePublishedAndThenCleared()
+    {
+        var flaky = new FakeControllerProvider("flaky");
+        flaky.Enqueue(_ => throw new IOException("temporary"));
+        flaky.Enqueue(_ => Task.FromResult<IReadOnlyList<ControllerDevice>>([Device("recovered")]));
+        var good = new FakeControllerProvider("good");
+        good.Enqueue(_ => Task.FromResult<IReadOnlyList<ControllerDevice>>([Device("good")]));
+        good.Enqueue(_ => Task.FromResult<IReadOnlyList<ControllerDevice>>([Device("good")]));
+        var composite = new CompositeControllerProvider([flaky, good], _ => { });
+        await using var service = new ControllerMonitoringService(composite);
+        ControllerSnapshotEventArgs? latest = null;
+        service.SnapshotUpdated += (_, args) => latest = args;
+
+        Assert.True(await service.RefreshAsync(TestContext.Current.CancellationToken));
+        Assert.Contains(latest!.ProviderDiagnostics,
+            diagnostic => diagnostic.ProviderId == "flaky" && diagnostic.Exception is IOException);
+        Assert.Contains(service.LatestSnapshot, controller => controller.Id == "good");
+
+        Assert.True(await service.RefreshAsync(TestContext.Current.CancellationToken));
+        Assert.All(latest!.ProviderDiagnostics, diagnostic => Assert.Null(diagnostic.Exception));
     }
 }

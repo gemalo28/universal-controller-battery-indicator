@@ -24,6 +24,7 @@ public sealed class CompositeControllerProviderTests
             item.Exception is IOException && item.ResultCount == 0);
         Assert.Contains(diagnostics, item => item.ProviderId == "good" &&
             item.Exception is null && item.ResultCount == 1 && item.Duration >= TimeSpan.Zero);
+        Assert.Equal(diagnostics, provider.LastScanDiagnostics);
     }
 
     [Fact]
@@ -65,7 +66,22 @@ public sealed class CompositeControllerProviderTests
         await Assert.ThrowsAsync<NotSupportedException>(() =>
             provider.SetLedColorAsync(controller, "#FFFFFF", cancellationToken:
                 TestContext.Current.CancellationToken));
-        await provider.PulseAsync(controller, TestContext.Current.CancellationToken);
+        await Assert.ThrowsAsync<NotSupportedException>(() =>
+            provider.PulseAsync(controller, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task LaterSuccessfulScan_ClearsFailedDiagnostics()
+    {
+        var attempts = 0;
+        var provider = new CompositeControllerProvider([new StubProvider("flaky", _ =>
+            ++attempts == 1
+                ? throw new IOException("temporary")
+                : Task.FromResult<IReadOnlyList<ControllerDevice>>([Device("one", "flaky", "Pad")]))]);
+        await provider.GetControllersAsync(TestContext.Current.CancellationToken);
+        Assert.Contains(provider.LastScanDiagnostics, diagnostic => diagnostic.Exception is IOException);
+        await provider.GetControllersAsync(TestContext.Current.CancellationToken);
+        Assert.All(provider.LastScanDiagnostics, diagnostic => Assert.Null(diagnostic.Exception));
     }
 
     private static ControllerDevice Device(string id, string provider, string name) =>
