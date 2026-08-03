@@ -520,20 +520,11 @@ public partial class MainWindow : Window
 
     private void ControllerDrag_MouseMove(object sender, MouseEventArgs e)
     {
-        if (e.LeftButton != MouseButtonState.Pressed || sender is not FrameworkElement
-            { Tag: string deviceKey }) return;
-        var controller = _controllers.FirstOrDefault(candidate =>
-            DeviceKey(candidate).Equals(deviceKey, StringComparison.OrdinalIgnoreCase));
-        if (controller is null || !controller.ProviderId.Equals("xinput",
-                StringComparison.OrdinalIgnoreCase)) return;
-
         var position = e.GetPosition(this);
-        if (Math.Abs(position.X - _controllerDragStart.X) < SystemParameters.MinimumHorizontalDragDistance &&
-            Math.Abs(position.Y - _controllerDragStart.Y) < SystemParameters.MinimumVerticalDragDistance)
-            return;
+        if (!TryGetDragDeviceKey(sender, e.LeftButton, position, out var deviceKey)) return;
+        var source = (FrameworkElement)sender;
 
         _controllerDragStarted = true;
-        var source = (FrameworkElement)sender;
         _controllerDragPopup = new ControllerDragPopup(LeftNavSurface, source);
         _controllerDragPopup.MoveToCursor();
         _controllerDragPopup.IsOpen = true;
@@ -552,6 +543,25 @@ public partial class MainWindow : Window
                 _controllerDragPopup.IsOpen = false;
             _controllerDragPopup = null;
         }
+    }
+
+    internal bool TryGetDragDeviceKey(object sender, MouseButtonState leftButton, Point position,
+        out string deviceKey)
+    {
+        deviceKey = string.Empty;
+        if (leftButton != MouseButtonState.Pressed || sender is not FrameworkElement
+            { Tag: string candidateKey }) return false;
+        var controller = _controllers.FirstOrDefault(candidate =>
+            DeviceKey(candidate).Equals(candidateKey, StringComparison.OrdinalIgnoreCase));
+        if (controller is null || !controller.ProviderId.Equals("xinput",
+                StringComparison.OrdinalIgnoreCase)) return false;
+
+        if (Math.Abs(position.X - _controllerDragStart.X) < SystemParameters.MinimumHorizontalDragDistance &&
+            Math.Abs(position.Y - _controllerDragStart.Y) < SystemParameters.MinimumVerticalDragDistance)
+            return false;
+
+        deviceKey = candidateKey;
+        return true;
     }
 
     private void ControllerDrag_GiveFeedback(object sender, GiveFeedbackEventArgs e)

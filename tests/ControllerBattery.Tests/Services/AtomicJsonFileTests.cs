@@ -29,6 +29,27 @@ public sealed class AtomicJsonFileTests
     }
 
     [Fact]
+    public void Load_UsesBackupWhenPrimaryIsMissing()
+    {
+        using var directory = new TemporaryDirectory();
+        var path = Path.Combine(directory.Path, "missing.json");
+        File.WriteAllText(path + ".bak", "{\"Text\":\"backup\"}");
+
+        Assert.Equal("backup", AtomicJsonFile.Load<Value>(path)?.Text);
+    }
+
+    [Fact]
+    public void Load_ReturnsDefaultWhenPrimaryAndBackupAreCorrupt()
+    {
+        using var directory = new TemporaryDirectory();
+        var path = Path.Combine(directory.Path, "corrupt.json");
+        File.WriteAllText(path, "bad");
+        File.WriteAllText(path + ".bak", "also bad");
+
+        Assert.Null(AtomicJsonFile.Load<Value>(path));
+    }
+
+    [Fact]
     public void FailedWrite_DoesNotDestroyPreviousFile()
     {
         using var directory = new TemporaryDirectory();

@@ -5,6 +5,19 @@ namespace ControllerBattery.Tests.Providers;
 public sealed class EightBitDoHidProviderTests
 {
     [Theory]
+    [InlineData(null, "8BitDo Controller")]
+    [InlineData("  Ultimate  ", "Ultimate")]
+    public void ProductNames_AreNormalized(string? product, string expected) =>
+        Assert.Equal(expected, EightBitDoHidProvider.NormalizeProductName(product));
+
+    [Theory]
+    [InlineData("SERIAL", "2DC8:3106:SERIAL")]
+    [InlineData(null, "2DC8:3106:USB#path")]
+    public void HardwareIdentity_PrefersSerial(string? serial, string expected) =>
+        Assert.Equal(expected, EightBitDoHidProvider.BuildHardwareId(
+            0x2DC8, 0x3106, serial, "USB#path"));
+
+    [Theory]
     [InlineData(0x01, 75, false)]
     [InlineData(0x04, 50, true)]
     public void ParseBattery_ParsesSupportedReports(byte reportId, byte percent, bool charging)

@@ -126,7 +126,12 @@ public sealed class WpfWindowIntegrationTests
             var profile = new ControllerProfile(key, "Custom", "#336699", controller.Kind,
                 LedColor: controller.CanSetLed ? "#112233" : null, LedBrightness: 1,
                 SyncLedWithProfile: controller.CanSetLed);
-            var window = new ProfileWindow(controller, profile);
+            var previewCount = 0;
+            var window = new ProfileWindow(controller, profile, (_, _) =>
+            {
+                previewCount++;
+                return Task.CompletedTask;
+            });
             Invoke(window, "ProfileWindow_SourceInitialized", window, EventArgs.Empty);
             Invoke(window, "ProfileWindow_Loaded", window, new RoutedEventArgs());
             Assert.Equal("Custom", window.CustomNameTextBox.Text);
@@ -137,6 +142,11 @@ public sealed class WpfWindowIntegrationTests
             window.CustomLedCheckBox.IsChecked = controller.CanSetLed;
             window.SyncLedWithProfileCheckBox.IsChecked = controller.CanSetLed;
             Invoke(window, "SyncLedWithProfileCheckBox_Changed", window, new RoutedEventArgs());
+            window.BrightLedBrightness.IsChecked = true;
+            Invoke(window, "LedBrightness_Changed", window, new RoutedEventArgs());
+            window.MediumLedBrightness.IsChecked = true;
+            Invoke(window, "LedBrightness_Changed", window, new RoutedEventArgs());
+            window.DimLedBrightness.IsChecked = true;
             Invoke(window, "LedBrightness_Changed", window, new RoutedEventArgs());
             Invoke(window, "UpdateColorSelection");
             Invoke(window, "UpdateIconSelection");
@@ -148,6 +158,7 @@ public sealed class WpfWindowIntegrationTests
             Invoke(window, "ProfileWindow_Closing", window, closing);
             Assert.True(closing.Cancel);
             Invoke(window, "Cancel_Click", window, new RoutedEventArgs());
+            Assert.Equal(controller.CanSetLed, previewCount > 0);
             SetField(window, "_allowClose", true);
             window.Close();
         }
@@ -266,6 +277,18 @@ public sealed class WpfWindowIntegrationTests
         var targetCard = new Border { Tag = parentKey };
         Assert.True(InvokeStatic<bool>(typeof(MainWindow), "HasControllerDrag", data));
         Assert.True(Invoke<bool>(window, "CanLinkDrop", targetCard, data));
+        var dragSource = new Border { Tag = childKey };
+        Assert.False(window.TryGetDragDeviceKey(dragSource, MouseButtonState.Released,
+            new Point(100, 100), out _));
+        Assert.False(window.TryGetDragDeviceKey(new Border(), MouseButtonState.Pressed,
+            new Point(100, 100), out _));
+        Assert.False(window.TryGetDragDeviceKey(targetCard, MouseButtonState.Pressed,
+            new Point(100, 100), out _));
+        Assert.False(window.TryGetDragDeviceKey(dragSource, MouseButtonState.Pressed,
+            new Point(0, 0), out _));
+        Assert.True(window.TryGetDragDeviceKey(dragSource, MouseButtonState.Pressed,
+            new Point(100, 100), out var draggedKey));
+        Assert.Equal(childKey, draggedKey);
         InvokeStatic<object?>(typeof(MainWindow), "AnimateDropTarget", targetCard, 1.03);
         Invoke(window, "SetControllerParent", childKey, null);
         Assert.Null(Invoke<ControllerDevice?>(window, "LinkedParent", child));
@@ -275,6 +298,9 @@ public sealed class WpfWindowIntegrationTests
         { RoutedEvent = UIElement.MouseLeftButtonUpEvent };
         SetField(window, "_controllerDragStarted", true);
         Invoke(window, "ControllerCard_MouseLeftButtonUp", targetCard, mouseUp);
+        var mouseDown = new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left)
+        { RoutedEvent = UIElement.MouseLeftButtonDownEvent };
+        Invoke(window, "ControllerDrag_MouseLeftButtonDown", dragSource, mouseDown);
         SetField(window, "_controllerDragStarted", false);
         Invoke(window, "ControllerCard_MouseLeftButtonUp", targetCard, mouseUp);
         Invoke(window, "ControllerCard_MouseLeftButtonUp", targetCard, mouseUp);
@@ -319,6 +345,11 @@ public sealed class WpfWindowIntegrationTests
         Invoke(window, "MinimizeButton_Click", window, new RoutedEventArgs());
         Invoke(window, "MaximizeButton_Click", window, new RoutedEventArgs());
         Invoke(window, "MainWindow_StateChanged", window, EventArgs.Empty);
+        var titleDoubleClick = new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left)
+        { RoutedEvent = UIElement.MouseLeftButtonDownEvent };
+        typeof(MouseButtonEventArgs).GetProperty(nameof(MouseButtonEventArgs.ClickCount))!
+            .GetSetMethod(nonPublic: true)!.Invoke(titleDoubleClick, [2]);
+        Invoke(window, "TitleBar_MouseLeftButtonDown", window, titleDoubleClick);
         window.WindowState = WindowState.Minimized;
         Invoke(window, "MainWindow_StateChanged", window, EventArgs.Empty);
         window.WindowState = WindowState.Normal;

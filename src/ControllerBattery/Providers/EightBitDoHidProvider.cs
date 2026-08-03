@@ -181,8 +181,7 @@ public sealed class EightBitDoHidProvider : IControllerProvider
     {
         try
         {
-            var product = device.GetProductName();
-            return string.IsNullOrWhiteSpace(product) ? "8BitDo Controller" : product.Trim();
+            return NormalizeProductName(device.GetProductName());
         }
         catch (Exception exception) when (exception is IOException or NotSupportedException)
         {
@@ -190,23 +189,19 @@ public sealed class EightBitDoHidProvider : IControllerProvider
         }
     }
 
+    internal static string NormalizeProductName(string? product) =>
+        string.IsNullOrWhiteSpace(product) ? "8BitDo Controller" : product.Trim();
+
     private static string GetStableHardwareId(HidDevice device)
     {
-        try
-        {
-            var serial = GetSerialNumber(device);
-            if (!string.IsNullOrWhiteSpace(serial))
-            {
-                return $"{device.VendorID:X4}:{device.ProductID:X4}:{serial}";
-            }
-        }
-        catch (Exception exception) when (exception is IOException or NotSupportedException)
-        {
-            // Serial numbers are optional for Bluetooth and receiver interfaces.
-        }
-
-        return $"{device.VendorID:X4}:{device.ProductID:X4}:{device.DevicePath}";
+        return BuildHardwareId(device.VendorID, device.ProductID, GetSerialNumber(device),
+            device.DevicePath);
     }
+
+    internal static string BuildHardwareId(int vendorId, int productId, string? serial,
+        string devicePath) => string.IsNullOrWhiteSpace(serial)
+        ? $"{vendorId:X4}:{productId:X4}:{devicePath}"
+        : $"{vendorId:X4}:{productId:X4}:{serial}";
 
     private static string? GetSerialNumber(HidDevice device)
     {

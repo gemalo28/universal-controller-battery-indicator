@@ -72,6 +72,51 @@ public sealed class HidProviderIntegrationTests
     }
 
     [Theory]
+    [InlineData(typeof(TimeoutException), "waiting")]
+    [InlineData(typeof(UnauthorizedAccessException), "denied")]
+    [InlineData(typeof(IOException), "No battery")]
+    public async Task DualSense_ScanHandlesUnavailableReports(Type exceptionType,
+        string expectedNote)
+    {
+        FakeHidDevice? device = null;
+        device = new(0x054C, 0x0CE6, "USB#dualsense-error", 64, 63, () =>
+            new FakeHidStream(device!)
+            {
+                ReadException = (Exception)Activator.CreateInstance(exceptionType)!
+            });
+        var provider = new DualSenseHidProvider(() => [device], _ => { });
+
+        var controller = Assert.Single(await provider.GetControllersAsync(
+            TestContext.Current.CancellationToken));
+
+        Assert.Contains(expectedNote, controller.BatteryNote,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task DualSense_UnavailableDeviceRejectsEveryOutputAction()
+    {
+        FakeHidDevice? device = null;
+        device = new(0x054C, 0x0CE6, "USB#dualsense-busy", 64, 63,
+            () => throw new IOException("busy"));
+        var provider = new DualSenseHidProvider(() => [device], _ => { });
+        var controller = Assert.Single(await provider.GetControllersAsync(
+            TestContext.Current.CancellationToken));
+        Assert.Contains("use", controller.BatteryNote, StringComparison.OrdinalIgnoreCase);
+
+        await Assert.ThrowsAsync<IOException>(() => provider.PulseAsync(controller,
+            TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<IOException>(() => provider.SetLedColorAsync(controller,
+            "#112233", 1, TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<IOException>(() => provider.ResetLedAsync(controller,
+            TestContext.Current.CancellationToken));
+
+        var absent = new DualSenseHidProvider(() => [], _ => { });
+        await Assert.ThrowsAsync<IOException>(() => absent.PulseAsync(controller,
+            TestContext.Current.CancellationToken));
+    }
+
+    [Theory]
     [InlineData(false, 0x80, BatteryLevel.Full, false)]
     [InlineData(true, 0x50, BatteryLevel.Medium, true)]
     public async Task SwitchPro_ScanAndActionsUseInjectedHidDevice(bool bluetooth, byte status,
@@ -269,5 +314,44 @@ public sealed class HidProviderIntegrationTests
             TestContext.Current.CancellationToken));
         Assert.Equal("8BitDo Controller", controller.Name);
         Assert.Contains("USB#metadata", controller.Id);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task EightBitDo_DefaultClassifierHandlesBusyAndIdleControllers(bool busy)
+    {
+        FakeHidDevice? device = null;
+        device = new(0x2DC8, 0x3106, busy ? "USB#busy" : "USB#idle", 34, 34,
+            () => busy ? throw new IOException("busy") : new FakeHidStream(device!));
+        var provider = new EightBitDoHidProvider(() => [device]);
+
+        var controller = Assert.Single(await provider.GetControllersAsync(
+            TestContext.Current.CancellationToken));
+
+        Assert.Null(controller.BatteryPercent);
+    }
+
+    [Fact]
+    public async Task SwitchPro_BusyAndDeniedDevicesRemainVisibleAndRejectPulse()
+    {
+        FakeHidDevice? busy = null;
+        busy = new(0x057E, 0x2009, "USB#switch-busy", 64, 64,
+            () => throw new IOException("busy"));
+        var busyProvider = new NintendoSwitchProHidProvider(() => [busy], _ => { });
+        var busyController = Assert.Single(await busyProvider.GetControllersAsync(
+            TestContext.Current.CancellationToken));
+        Assert.Contains("use", busyController.BatteryNote, StringComparison.OrdinalIgnoreCase);
+        await Assert.ThrowsAsync<IOException>(() => busyProvider.PulseAsync(busyController,
+            TestContext.Current.CancellationToken));
+
+        FakeHidDevice? denied = null;
+        denied = new(0x057E, 0x2009, "USB#switch-denied", 64, 64, () =>
+            new FakeHidStream(denied!) { ReadException = new UnauthorizedAccessException() });
+        var deniedProvider = new NintendoSwitchProHidProvider(() => [denied], _ => { });
+        var deniedController = Assert.Single(await deniedProvider.GetControllersAsync(
+            TestContext.Current.CancellationToken));
+        Assert.Contains("denied", deniedController.BatteryNote,
+            StringComparison.OrdinalIgnoreCase);
     }
 }

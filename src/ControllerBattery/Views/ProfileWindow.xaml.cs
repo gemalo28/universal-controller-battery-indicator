@@ -37,6 +37,7 @@ public partial class ProfileWindow : Window
     private readonly List<Button> _iconButtons = [];
     private bool _closeAnimationRunning;
     private bool _allowClose;
+    private bool _previewReady;
 
     public ControllerProfile? Result { get; private set; }
 
@@ -106,7 +107,7 @@ public partial class ProfileWindow : Window
         _selectedColor = (string)((Button)sender).Tag;
         UpdateColorSelection();
         UpdateLedColorControls();
-        if (IsLoaded && CustomLedCheckBox.IsChecked == true &&
+        if (_previewReady && CustomLedCheckBox.IsChecked == true &&
             SyncLedWithProfileCheckBox.IsChecked == true && _previewLedColorAsync is not null)
         {
             _ = _previewLedColorAsync(_selectedColor, _selectedLedBrightness);
@@ -157,7 +158,7 @@ public partial class ProfileWindow : Window
     private void SyncLedWithProfileCheckBox_Changed(object sender, RoutedEventArgs e)
     {
         UpdateLedColorControls();
-        if (IsLoaded && CustomLedCheckBox.IsChecked == true &&
+        if (_previewReady && CustomLedCheckBox.IsChecked == true &&
             SyncLedWithProfileCheckBox.IsChecked == true && _previewLedColorAsync is not null)
         {
             _ = _previewLedColorAsync(_selectedColor, _selectedLedBrightness);
@@ -173,7 +174,7 @@ public partial class ProfileWindow : Window
         else if (DimLedBrightness.IsChecked == true)
             _selectedLedBrightness = 2;
 
-        if (IsLoaded && CustomLedCheckBox.IsChecked == true && _previewLedColorAsync is not null)
+        if (_previewReady && CustomLedCheckBox.IsChecked == true && _previewLedColorAsync is not null)
             _ = _previewLedColorAsync(_selectedLedColor, _selectedLedBrightness);
     }
 
@@ -236,6 +237,7 @@ public partial class ProfileWindow : Window
 
     private void ProfileWindow_Loaded(object sender, RoutedEventArgs e)
     {
+        _previewReady = true;
         ProfileRoot.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1,
             TimeSpan.FromMilliseconds(180))
         {
