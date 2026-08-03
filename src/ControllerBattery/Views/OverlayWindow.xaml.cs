@@ -85,6 +85,7 @@ public partial class OverlayWindow : Window
     private void PositionOnScreen(OverlayPosition position)
     {
         DisplayPlacementService.PositionTopmost(this, position);
+        DisplayPlacementService.ScheduleTopmost(this, position);
     }
 
     private void OverlayWindow_SourceInitialized(object? sender, EventArgs e)

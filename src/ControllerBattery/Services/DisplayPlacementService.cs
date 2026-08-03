@@ -1,6 +1,8 @@
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
+using System.Windows.Media;
+using System.Windows.Threading;
 using ControllerBattery.Models;
 
 namespace ControllerBattery.Services;
@@ -33,10 +35,16 @@ internal static class DisplayPlacementService
             ? info.Monitor
             : info.WorkArea;
         var handle = new WindowInteropHelper(window).Handle;
-        if (handle == IntPtr.Zero || !GetWindowRect(handle, out var windowBounds)) return;
-
-        var width = windowBounds.Right - windowBounds.Left;
-        var height = windowBounds.Bottom - windowBounds.Top;
+        if (handle == IntPtr.Zero) return;
+        var dpi = VisualTreeHelper.GetDpi(window);
+        var width = (int)Math.Ceiling(window.ActualWidth * dpi.DpiScaleX);
+        var height = (int)Math.Ceiling(window.ActualHeight * dpi.DpiScaleY);
+        if ((width <= 0 || height <= 0) && GetWindowRect(handle, out var windowBounds))
+        {
+            width = windowBounds.Right - windowBounds.Left;
+            height = windowBounds.Bottom - windowBounds.Top;
+        }
+        if (width <= 0 || height <= 0) return;
         var x = position is OverlayPosition.TopLeft or OverlayPosition.BottomLeft
             ? area.Left + margin
             : area.Right - width - margin;
@@ -46,6 +54,24 @@ internal static class DisplayPlacementService
 
         SetWindowPos(handle, HwndTopmost, x, y, 0, 0,
             SwpNoSize | SwpNoActivate | SwpShowWindow);
+    }
+
+    internal static void ScheduleTopmost(Window window, OverlayPosition position, int margin = 18)
+    {
+        _ = window.Dispatcher.InvokeAsync(() =>
+        {
+            if (!window.IsVisible) return;
+            window.UpdateLayout();
+            PositionTopmost(window, position, margin);
+
+            // Moving to a monitor with another scale raises a DPI/layout pass. Reapply after it.
+            _ = window.Dispatcher.InvokeAsync(() =>
+            {
+                if (!window.IsVisible) return;
+                window.UpdateLayout();
+                PositionTopmost(window, position, margin);
+            }, DispatcherPriority.ContextIdle);
+        }, DispatcherPriority.Loaded);
     }
 
     private static IntPtr FindFullscreenMonitor()

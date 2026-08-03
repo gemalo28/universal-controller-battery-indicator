@@ -45,6 +45,7 @@ public partial class LowBatteryNotificationWindow : Window
     private void PositionOnScreen(OverlayPosition position)
     {
         DisplayPlacementService.PositionTopmost(this, position);
+        DisplayPlacementService.ScheduleTopmost(this, position);
     }
 
     private void BeginClose()

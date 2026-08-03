@@ -29,14 +29,14 @@ explicit virtual-device relationships.
 
 ## Controller data flow
 
-1. `ControllerMonitoringService` uses an abstract polling timer for configured polling. Manual, initial, post-action, and overlay refreshes share its serialized path. Request sequencing suppresses stale snapshots, and shutdown cancels active work.
+1. `ControllerMonitoringService` uses an abstract polling timer for configured polling. Manual, initial, post-action, overlay, and debounced Windows device-change refreshes share its serialized path. Request sequencing suppresses stale snapshots, and shutdown cancels active work.
 2. Each provider translates its native observation into `ControllerDevice`.
 3. `CompositeControllerProvider` combines provider results and removes duplicate
    observations that have the same provider-scoped key.
 4. `ControllerProfileService.Apply` overlays presentation-only profile data such as custom
    name, accent, and icon onto the detected snapshot.
-5. Pending DualSense LED profiles and low-battery transitions are processed.
-6. The navigation, selected detail view, counters, and visible overlay are rendered
+5. Pending DualSense LED profiles plus connection and low-battery transitions are processed.
+6. The navigation, selected detail view, counters, notifications, and visible overlay are rendered
    from the same refreshed snapshot.
 
 The overlay does not own a separate polling loop. A visible `OverlayWindow` receives
@@ -224,15 +224,30 @@ to keep the underlying drop target's HWND reachable.
 ```
 
 `MainWindow` registers the global overlay shortcut through `GlobalHotkeyInterop` and rejects a
-new shortcut if another application owns it. Changes to the shortcut, corner, or
-polling interval apply immediately.
+new shortcut if another application owns it. Changes to the shortcut, corner, polling interval,
+startup registration, or notification preferences apply when Settings is saved.
 
-`DisplayPlacementService` places both the overlay and low-battery notification in the
-selected corner of the primary work area and restores topmost placement. The overlay
-is non-activating and uses tool-window/no-activate extended styles. Exclusive fullscreen
-games can still own the final display surface and cover ordinary desktop overlays.
+`WindowsStartupService` writes the current executable plus `--background` to the current user's
+Windows `Run` key. Background startup creates the main window minimized and outside the taskbar;
+the tray icon remains available for restore or exit.
+
+`DeviceNotificationInterop` registers HID and XInput/XUSB device-interface notifications on
+the main window. Relevant Plug-and-Play messages are debounced before requesting an immediate
+monitoring refresh. Polling remains the fallback for drivers and virtual devices that do not
+emit reliable events.
+
+`DisplayPlacementService` locates a fullscreen application's monitor, falling back to the
+active monitor when necessary. It converts committed WPF layout dimensions to physical pixels
+and reapplies placement after render and per-monitor DPI transitions. The overlay uses the
+configured corner; connection toasts use bottom-left; low-battery alerts use the configured
+overlay corner. Exclusive-fullscreen games can still cover ordinary desktop overlays.
 
 ## Notifications
+
+`ControllerConnectionService` compares successful snapshots and suppresses the initial scan.
+It resolves grouped virtual outputs to their main controller and deduplicates simultaneous
+parent/output transitions before presentation. Connection toasts use the projected profile
+name, accent, and icon.
 
 `LowBatteryService` tracks controller keys currently in a low state. A notification is shown
 only on transition into `Empty` or `Low`, preventing a popup on every poll. The state is
@@ -240,7 +255,9 @@ removed when the controller recovers or disconnects, allowing a future low trans
 to notify again.
 
 `LowBatteryNotificationWindow` automatically dismisses after eight seconds. Its corner
-matches the overlay setting, and Settings can show a test notification.
+matches the overlay setting, and Settings can show a test notification. Connection and
+low-battery notifications can be disabled independently. Their transition services continue
+tracking while disabled so enabling them does not replay stale events.
 
 ## Diagnostics
 
@@ -259,14 +276,16 @@ instead of aborting the entire capture.
 ## Presentation structure
 
 - `ControllerMonitoringService` owns polling, serialized scans, cancellation, and raw snapshots.
-- `ControllerProfileService` and `LowBatteryService` own profile projection and low transitions.
+- `ControllerProfileService`, `ControllerConnectionService`, and `LowBatteryService` own profile
+  projection and notification transitions.
 - `MainWindow` owns selection, WPF rendering, grouping gestures, LED follow-up, hotkey wiring,
   dialogs, and overlay lifetime.
 - `OverlayWindow` renders the current normalized snapshot without activating.
 - `ProfileWindow` edits identity, appearance, and capability-gated LED preferences.
 - `LedColorWindow` provides suggested colors, editable hexadecimal input, RGB sliders,
   live HID preview, and OK/Cancel restoration behavior.
-- `SettingsWindow` edits hotkey, placement, polling, notification testing, and diagnostics.
+- `SettingsWindow` edits hotkey, placement, polling, startup, notification preferences/testing,
+  and diagnostics.
 - `AboutWindow` reports the application version, supported providers, and notices.
 - `SmoothScrollBehavior` provides shared scroll behavior for scrollable windows.
 - `DisplayPlacementService` centralizes screen-corner positioning.
@@ -318,10 +337,9 @@ Coverage is collected with `coverlet.collector` and `coverage.runsettings`:
 dotnet test ControllerBattery.sln --settings coverage.runsettings --collect:"XPlat Code Coverage"
 ```
 
-The current baseline is **12.01% line coverage (258/2148)** and the long-term target is **90%**.
-Only generated XAML/compiler output is excluded. CI records coverage without enforcing a threshold
-until a stable CI baseline is available; enforcement should then start at that measured baseline
-and increase monotonically. It must never be lowered.
+The long-term line-coverage target is **90%**. Only generated XAML/compiler output is excluded.
+Use the current CI report as the baseline; any enforced threshold should increase monotonically
+and must never be lowered to accommodate a change.
 
 Priority gaps are controller action coordination, provider output-report generation, diagnostics,
 persistence fault injection, presentation-state projection, and isolated code-behind behavior.

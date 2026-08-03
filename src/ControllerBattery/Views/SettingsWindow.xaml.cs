@@ -27,6 +27,9 @@ public partial class SettingsWindow : Window
         _modifiers = settings.OverlayModifiers;
         _key = settings.OverlayKey;
         PollingIntervalText.Text = settings.PollingIntervalSeconds.ToString();
+        StartWithWindowsCheckBox.IsChecked = settings.StartWithWindows;
+        ConnectionNotificationsCheckBox.IsChecked = settings.ShowConnectionNotifications;
+        LowBatteryNotificationsCheckBox.IsChecked = settings.ShowLowBatteryNotifications;
         SetOverlayPosition(settings.OverlayPosition);
         UpdateText();
         PreviewKeyDown += SettingsWindow_PreviewKeyDown;
@@ -150,7 +153,10 @@ public partial class SettingsWindow : Window
             return;
         }
 
-        Result = new AppSettings(_modifiers, _key, interval, GetOverlayPosition());
+        Result = new AppSettings(_modifiers, _key, interval, GetOverlayPosition(),
+            StartWithWindowsCheckBox.IsChecked == true,
+            ConnectionNotificationsCheckBox.IsChecked == true,
+            LowBatteryNotificationsCheckBox.IsChecked == true);
         CloseWithAnimation(true);
     }
 

@@ -14,7 +14,10 @@ public sealed record AppSettings(
     ModifierKeys OverlayModifiers,
     Key OverlayKey,
     int PollingIntervalSeconds = 30,
-    OverlayPosition OverlayPosition = OverlayPosition.BottomRight)
+    OverlayPosition OverlayPosition = OverlayPosition.BottomRight,
+    bool StartWithWindows = false,
+    bool ShowConnectionNotifications = true,
+    bool ShowLowBatteryNotifications = true)
 {
     public const int DefaultPollingIntervalSeconds = 30;
     public const int MinimumPollingIntervalSeconds = 5;

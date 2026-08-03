@@ -28,6 +28,42 @@ public sealed class AppSettingsStoreTests
         File.WriteAllText(path, "corrupt");
         Assert.Equal(20, AppSettingsStore.LoadFrom(path).PollingIntervalSeconds);
     }
+
+    [Fact]
+    public void SaveAndLoad_RoundTripsStartWithWindows()
+    {
+        using var directory = new TemporaryDirectory();
+        var path = Path.Combine(directory.Path, "settings.json");
+        AppSettingsStore.SaveTo(path, AppSettings.Default with { StartWithWindows = true });
+
+        Assert.True(AppSettingsStore.LoadFrom(path).StartWithWindows);
+    }
+
+    [Fact]
+    public void SaveAndLoad_RoundTripsConnectionNotifications()
+    {
+        using var directory = new TemporaryDirectory();
+        var path = Path.Combine(directory.Path, "settings.json");
+        AppSettingsStore.SaveTo(path, AppSettings.Default with
+        {
+            ShowConnectionNotifications = false
+        });
+
+        Assert.False(AppSettingsStore.LoadFrom(path).ShowConnectionNotifications);
+    }
+
+    [Fact]
+    public void SaveAndLoad_RoundTripsLowBatteryNotifications()
+    {
+        using var directory = new TemporaryDirectory();
+        var path = Path.Combine(directory.Path, "settings.json");
+        AppSettingsStore.SaveTo(path, AppSettings.Default with
+        {
+            ShowLowBatteryNotifications = false
+        });
+
+        Assert.False(AppSettingsStore.LoadFrom(path).ShowLowBatteryNotifications);
+    }
 }
 
 internal sealed class TemporaryDirectory : IDisposable

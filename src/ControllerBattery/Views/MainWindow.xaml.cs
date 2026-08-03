@@ -11,6 +11,9 @@ using ControllerBattery.Providers;
 using ControllerBattery.Services;
 using ControllerBattery.Interop;
 using System.ComponentModel;
+using System.Windows.Threading;
+using DrawingIcon = System.Drawing.Icon;
+using Forms = System.Windows.Forms;
 
 namespace ControllerBattery;
 
@@ -37,6 +40,8 @@ public partial class MainWindow : Window
     private OverlayWindow? _overlay;
     private LowBatteryNotificationWindow? _lowBatteryNotification;
     private readonly LowBatteryService _lowBatteryService = new();
+    private ControllerConnectionNotificationWindow? _connectionNotification;
+    private readonly ControllerConnectionService _connectionService = new();
     private readonly HashSet<string> _appliedLedProfiles = [];
     private HwndSource? _windowSource;
     private Point _controllerDragStart;
@@ -45,10 +50,32 @@ public partial class MainWindow : Window
     private const string ControllerDragFormat = "ControllerBattery.ControllerDeviceKey";
     private long _latestSnapshotSequence;
     private bool _shutdownComplete;
+    private readonly Forms.NotifyIcon _trayIcon;
+    private readonly Forms.ContextMenuStrip _trayMenu;
+    private IReadOnlyList<IntPtr> _deviceNotificationRegistrations = [];
+    private readonly DispatcherTimer _deviceChangeTimer = new()
+    {
+        Interval = TimeSpan.FromMilliseconds(400)
+    };
 
     public MainWindow()
     {
         InitializeComponent();
+        if (App.StartInBackground)
+        {
+            WindowState = WindowState.Minimized;
+            ShowInTaskbar = false;
+        }
+        _trayMenu = CreateTrayMenu();
+        _trayIcon = new Forms.NotifyIcon
+        {
+            Icon = LoadTrayIcon(),
+            Text = "Controller Battery",
+            ContextMenuStrip = _trayMenu,
+            Visible = true
+        };
+        _trayIcon.DoubleClick += (_, _) => RestoreFromTray();
+        _deviceChangeTimer.Tick += DeviceChangeTimer_Tick;
         _provider = ControllerProviderFactory.CreateHardwareProvider();
         _monitoringService = new ControllerMonitoringService(_provider);
         _controllerActions = new ControllerActionService(_provider);
@@ -60,18 +87,70 @@ public partial class MainWindow : Window
         SourceInitialized += MainWindow_SourceInitialized;
         Loaded += async (_, _) =>
         {
+            if (App.StartInBackground)
+                Hide();
             await _monitoringService.StartAsync(TimeSpan.FromSeconds(_settings.PollingIntervalSeconds),
                 App.LifetimeToken);
             await RefreshControllersAsync();
         };
         Closing += MainWindow_Closing;
+        StateChanged += MainWindow_StateChanged;
         Closed += (_, _) =>
         {
+            _trayIcon.Visible = false;
+            _trayIcon.Dispose();
+            _trayMenu.Dispose();
+            _deviceChangeTimer.Stop();
+            DeviceNotificationInterop.UnregisterControllerNotifications(
+                _deviceNotificationRegistrations);
             UnregisterOverlayHotkey();
             _windowSource?.RemoveHook(WindowMessageHook);
             _overlay?.Close();
             _lowBatteryNotification?.Close();
+            _connectionNotification?.Close();
         };
+    }
+
+    private Forms.ContextMenuStrip CreateTrayMenu()
+    {
+        var menu = new Forms.ContextMenuStrip();
+        var openItem = new Forms.ToolStripMenuItem("Open Controller Battery")
+        {
+            Font = new System.Drawing.Font(menu.Font, System.Drawing.FontStyle.Bold)
+        };
+        openItem.Click += (_, _) => RestoreFromTray();
+        var exitItem = new Forms.ToolStripMenuItem("Exit");
+        exitItem.Click += (_, _) => Dispatcher.InvokeAsync(Close);
+        menu.Items.Add(openItem);
+        menu.Items.Add(new Forms.ToolStripSeparator());
+        menu.Items.Add(exitItem);
+        return menu;
+    }
+
+    private static DrawingIcon LoadTrayIcon()
+    {
+        var executablePath = Environment.ProcessPath;
+        return executablePath is null
+            ? (DrawingIcon)System.Drawing.SystemIcons.Application.Clone()
+            : DrawingIcon.ExtractAssociatedIcon(executablePath)
+              ?? (DrawingIcon)System.Drawing.SystemIcons.Application.Clone();
+    }
+
+    private void MainWindow_StateChanged(object? sender, EventArgs e)
+    {
+        if (WindowState == WindowState.Minimized)
+            Hide();
+    }
+
+    private void RestoreFromTray()
+    {
+        _ = Dispatcher.InvokeAsync(() =>
+        {
+            ShowInTaskbar = true;
+            Show();
+            WindowState = WindowState.Normal;
+            Activate();
+        });
     }
 
     private async Task RefreshControllersAsync(bool userInitiated = false)
@@ -108,6 +187,7 @@ public partial class MainWindow : Window
         _detectedControllers = e.Controllers;
         _controllers = ApplyProfiles(_detectedControllers);
         await ApplyPendingProfileLedsAsync(App.LifetimeToken);
+        ShowControllerConnectionChanges();
         await ShowLowBatteryAlertsAsync(App.LifetimeToken);
         if (e.Sequence != Interlocked.Read(ref _latestSnapshotSequence)) return;
         RenderControllerList();
@@ -185,11 +265,20 @@ public partial class MainWindow : Window
         _controllers.Where(candidate => LinkedParent(candidate) is { } parent &&
             DeviceKey(parent).Equals(DeviceKey(controller), StringComparison.OrdinalIgnoreCase)).ToArray();
 
+    private void ShowControllerConnectionChanges()
+    {
+        var changes = _connectionService.FindChanges(_controllers, _profiles);
+        if (!_settings.ShowConnectionNotifications || changes.Count == 0) return;
+
+        _connectionNotification ??= new ControllerConnectionNotificationWindow();
+        _connectionNotification.ShowChanges(changes);
+    }
+
     private async Task ShowLowBatteryAlertsAsync(CancellationToken cancellationToken)
     {
         var newlyLow = _lowBatteryService.FindNewlyLow(_controllers);
 
-        if (newlyLow.Count == 0) return;
+        if (!_settings.ShowLowBatteryNotifications || newlyLow.Count == 0) return;
 
         _lowBatteryNotification ??= new LowBatteryNotificationWindow();
         _lowBatteryNotification.ShowAlert(newlyLow, _settings.OverlayPosition);
@@ -1016,8 +1105,11 @@ public partial class MainWindow : Window
 
     private void MainWindow_SourceInitialized(object? sender, EventArgs e)
     {
-        _windowSource = HwndSource.FromHwnd(new WindowInteropHelper(this).Handle);
+        var windowHandle = new WindowInteropHelper(this).Handle;
+        _windowSource = HwndSource.FromHwnd(windowHandle);
         _windowSource.AddHook(WindowMessageHook);
+        _deviceNotificationRegistrations =
+            DeviceNotificationInterop.RegisterControllerNotifications(windowHandle);
         if (!RegisterOverlayHotkey(_settings))
         {
             MessageBox.Show(this,
@@ -1033,8 +1125,28 @@ public partial class MainWindow : Window
             handled = true;
             _ = ToggleOverlayAsync();
         }
+        else if (message == DeviceNotificationInterop.WmDeviceChange &&
+            DeviceNotificationInterop.IsControllerDeviceChange(wParam.ToInt32()))
+        {
+            _deviceChangeTimer.Stop();
+            _deviceChangeTimer.Start();
+        }
 
         return IntPtr.Zero;
+    }
+
+    private async void DeviceChangeTimer_Tick(object? sender, EventArgs e)
+    {
+        _deviceChangeTimer.Stop();
+        if (App.LifetimeToken.IsCancellationRequested) return;
+        try
+        {
+            await _monitoringService.RefreshAsync(App.LifetimeToken);
+        }
+        catch (OperationCanceledException) when (App.LifetimeToken.IsCancellationRequested)
+        {
+            // Expected during application shutdown.
+        }
     }
 
     private async Task ToggleOverlayAsync()
@@ -1100,12 +1212,21 @@ public partial class MainWindow : Window
             return;
         }
 
+        var startupChanged = updated.StartWithWindows != _settings.StartWithWindows;
         try
         {
+            if (startupChanged)
+                WindowsStartupService.SetEnabled(updated.StartWithWindows);
             AppSettingsStore.Save(updated);
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or
+            System.Security.SecurityException)
         {
+            if (startupChanged)
+            {
+                try { WindowsStartupService.SetEnabled(_settings.StartWithWindows); }
+                catch { /* Preserve the original error shown to the user. */ }
+            }
             UnregisterOverlayHotkey();
             RegisterOverlayHotkey(_settings);
             MessageBox.Show(this, exception.Message, "Could not save settings",

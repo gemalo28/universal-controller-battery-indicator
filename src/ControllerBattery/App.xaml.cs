@@ -6,6 +6,9 @@ public partial class App : Application
 {
     private readonly CancellationTokenSource _lifetime = new();
 
+    public static bool StartInBackground { get; } = Environment.GetCommandLineArgs()
+        .Any(argument => argument.Equals("--background", StringComparison.OrdinalIgnoreCase));
+
     public static CancellationToken LifetimeToken =>
         ((App)Current)._lifetime.Token;
 

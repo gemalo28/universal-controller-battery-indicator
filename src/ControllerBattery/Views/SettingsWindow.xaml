@@ -130,6 +130,36 @@
           </StackPanel>
         </Border>
 
+        <TextBlock Text="STARTUP" Foreground="#8B7CF6" FontSize="11" FontWeight="Bold"
+                   Margin="0,24,0,9"/>
+        <Border Background="#22202D" CornerRadius="12" Padding="18" Margin="0,0,0,12">
+          <StackPanel>
+            <CheckBox x:Name="StartWithWindowsCheckBox" Foreground="#F4F2FF"
+                      FontSize="16" FontWeight="SemiBold" Cursor="Hand"
+                      Content="Start with Windows"/>
+            <TextBlock Text="Launch Controller Battery in the system tray when you sign in."
+                       Foreground="#9995AA" FontSize="12" TextWrapping="Wrap" Margin="24,7,0,0"/>
+          </StackPanel>
+        </Border>
+
+        <TextBlock Text="NOTIFICATIONS" Foreground="#8B7CF6" FontSize="11" FontWeight="Bold"
+                   Margin="0,24,0,9"/>
+        <Border Background="#22202D" CornerRadius="12" Padding="18" Margin="0,0,0,12">
+          <StackPanel>
+            <CheckBox x:Name="ConnectionNotificationsCheckBox" Foreground="#F4F2FF"
+                      FontSize="16" FontWeight="SemiBold" Cursor="Hand"
+                      Content="Connect/disconnect notifications"/>
+            <TextBlock Text="Show a toast when a controller connects or disconnects."
+                       Foreground="#9995AA" FontSize="12" TextWrapping="Wrap" Margin="30,7,0,0"/>
+            <Border Height="1" Background="#343140" Margin="0,16,0,16"/>
+            <CheckBox x:Name="LowBatteryNotificationsCheckBox" Foreground="#F4F2FF"
+                      FontSize="16" FontWeight="SemiBold" Cursor="Hand"
+                      Content="Low-battery notifications"/>
+            <TextBlock Text="Show an alert when a controller reaches a low battery level."
+                       Foreground="#9995AA" FontSize="12" TextWrapping="Wrap" Margin="30,7,0,0"/>
+          </StackPanel>
+        </Border>
+
         <!-- Optional diagnostic block: safe to remove with TestLowBatteryButton_Click and its callback. -->
         <TextBlock Text="TEST" Foreground="#8B7CF6" FontSize="11" FontWeight="Bold"
                    Margin="0,24,0,9"/>
