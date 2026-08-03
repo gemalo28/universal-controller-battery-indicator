@@ -123,11 +123,15 @@ public partial class SettingsWindow : Window
             return;
         }
 
-        var modifiers = Keyboard.Modifiers;
+        TrySetShortcut(Keyboard.Modifiers, key);
+    }
+
+    internal bool TrySetShortcut(ModifierKeys modifiers, Key key)
+    {
         if (modifiers == ModifierKeys.None || key is Key.Escape or Key.Tab)
         {
             ShortcutText.Text = "Include Ctrl, Alt, Shift, or Win with another key";
-            return;
+            return false;
         }
 
         _modifiers = modifiers;
@@ -135,6 +139,7 @@ public partial class SettingsWindow : Window
         _capturing = false;
         CaptureButton.Content = "Change shortcut";
         UpdateText();
+        return true;
     }
 
     private void UpdateText() => ShortcutText.Text = AppSettings.FormatShortcut(_modifiers, _key);

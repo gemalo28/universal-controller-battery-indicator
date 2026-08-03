@@ -18,6 +18,19 @@ public sealed class NintendoSwitchProHidProvider : IControllerProvider, IPowerOf
     private const int ReadTimeoutMilliseconds = 140;
     private const int ReportsToInspect = 8;
     private const string BluetoothHidService = "{00001124-0000-1000-8000-00805f9b34fb}";
+    private readonly Func<IEnumerable<HidDevice>> _getDevices;
+    private readonly Action<string?> _disconnectBluetooth;
+
+    public NintendoSwitchProHidProvider() : this(
+        () => DeviceList.Local.GetHidDevices(NintendoVendorId, SwitchProProductId),
+        WindowsBluetooth.Disconnect) { }
+
+    internal NintendoSwitchProHidProvider(Func<IEnumerable<HidDevice>> getDevices,
+        Action<string?> disconnectBluetooth)
+    {
+        _getDevices = getDevices;
+        _disconnectBluetooth = disconnectBluetooth;
+    }
 
     public string Id => "nintendo-switch-pro-hid";
 
@@ -33,7 +46,7 @@ public sealed class NintendoSwitchProHidProvider : IControllerProvider, IPowerOf
 
     private IReadOnlyList<ControllerDevice> Scan(CancellationToken cancellationToken)
     {
-        var devices = DeviceList.Local.GetHidDevices(NintendoVendorId, SwitchProProductId)
+        var devices = _getDevices()
             .GroupBy(device => device.DevicePath, StringComparer.OrdinalIgnoreCase)
             .Select(group => group.First());
         var controllers = new List<ControllerDevice>();
@@ -100,9 +113,9 @@ public sealed class NintendoSwitchProHidProvider : IControllerProvider, IPowerOf
             DateTime.Now, battery is null ? note : battery.Note, hardwareId, !isUsb, true);
     }
 
-    private static void PowerOff(ControllerDevice controller, CancellationToken cancellationToken)
+    private void PowerOff(ControllerDevice controller, CancellationToken cancellationToken)
     {
-        var device = DeviceList.Local.GetHidDevices(NintendoVendorId, SwitchProProductId)
+        var device = _getDevices()
             .FirstOrDefault(candidate => GetStableHardwareId(candidate)
                 .Equals(controller.Id, StringComparison.OrdinalIgnoreCase))
             ?? throw new IOException("The Switch Pro Controller is no longer connected.");
@@ -112,12 +125,12 @@ public sealed class NintendoSwitchProHidProvider : IControllerProvider, IPowerOf
         }
 
         cancellationToken.ThrowIfCancellationRequested();
-        WindowsBluetooth.Disconnect(device.GetSerialNumber());
+        _disconnectBluetooth(GetSerialNumber(device));
     }
 
-    private static void Pulse(ControllerDevice controller, CancellationToken cancellationToken)
+    private void Pulse(ControllerDevice controller, CancellationToken cancellationToken)
     {
-        var device = DeviceList.Local.GetHidDevices(NintendoVendorId, SwitchProProductId)
+        var device = _getDevices()
             .FirstOrDefault(candidate => GetStableHardwareId(candidate)
                 .Equals(controller.Id, StringComparison.OrdinalIgnoreCase));
         if (device is null)
@@ -223,7 +236,7 @@ public sealed class NintendoSwitchProHidProvider : IControllerProvider, IPowerOf
         }
     }
 
-    private static byte[] CreateSubcommandReport(int length, byte subcommand, byte argument)
+    internal static byte[] CreateSubcommandReport(int length, byte subcommand, byte argument)
     {
         var report = new byte[length];
         report[0] = 0x01;
@@ -249,24 +262,24 @@ public sealed class NintendoSwitchProHidProvider : IControllerProvider, IPowerOf
     {
         try
         {
-            var product = device.GetProductName();
-            if (string.IsNullOrWhiteSpace(product))
-            {
-                return "Nintendo Switch Pro Controller";
-            }
-
-            var name = product.Trim();
-            return name.Equals("Wireless Gamepad", StringComparison.OrdinalIgnoreCase) ||
-                   name.Equals("Gamepad", StringComparison.OrdinalIgnoreCase) ||
-                   name.Equals("Pro Controller", StringComparison.OrdinalIgnoreCase) ||
-                   name.Equals("Wireless Controller", StringComparison.OrdinalIgnoreCase)
-                ? "Nintendo Switch Pro Controller"
-                : name;
+            return NormalizeProductName(device.GetProductName());
         }
-        catch (IOException)
+        catch (Exception exception) when (exception is IOException or NotSupportedException)
         {
             return "Nintendo Switch Pro Controller";
         }
+    }
+
+    internal static string NormalizeProductName(string? product)
+    {
+        if (string.IsNullOrWhiteSpace(product)) return "Nintendo Switch Pro Controller";
+        var name = product.Trim();
+        return name.Equals("Wireless Gamepad", StringComparison.OrdinalIgnoreCase) ||
+               name.Equals("Gamepad", StringComparison.OrdinalIgnoreCase) ||
+               name.Equals("Pro Controller", StringComparison.OrdinalIgnoreCase) ||
+               name.Equals("Wireless Controller", StringComparison.OrdinalIgnoreCase)
+            ? "Nintendo Switch Pro Controller"
+            : name;
     }
 
     private static bool IsBluetooth(HidDevice device) =>
@@ -275,20 +288,22 @@ public sealed class NintendoSwitchProHidProvider : IControllerProvider, IPowerOf
 
     private static string GetStableHardwareId(HidDevice device)
     {
-        try
-        {
-            var serial = device.GetSerialNumber();
-            if (!string.IsNullOrWhiteSpace(serial))
-            {
-                return $"{device.VendorID:X4}:{device.ProductID:X4}:{serial}";
-            }
-        }
-        catch (IOException)
-        {
-            // Serial numbers are optional over Bluetooth.
-        }
+        return BuildHardwareId(device.VendorID, device.ProductID, GetSerialNumber(device),
+            device.DevicePath);
+    }
 
-        return $"{device.VendorID:X4}:{device.ProductID:X4}:{device.DevicePath}";
+    internal static string BuildHardwareId(int vendorId, int productId, string? serial,
+        string devicePath) => string.IsNullOrWhiteSpace(serial)
+        ? $"{vendorId:X4}:{productId:X4}:{devicePath}"
+        : $"{vendorId:X4}:{productId:X4}:{serial}";
+
+    private static string? GetSerialNumber(HidDevice device)
+    {
+        try { return device.GetSerialNumber(); }
+        catch (Exception exception) when (exception is IOException or NotSupportedException)
+        {
+            return null;
+        }
     }
 
     internal sealed record BatteryObservation(BatteryLevel Level, bool IsCharging, string? Note);

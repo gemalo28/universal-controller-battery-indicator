@@ -11,12 +11,21 @@ internal static class ControllerDiagnosticsService
     private const int ReportsPerDevice = 12;
 
     internal static Task<string> CaptureAsync(CancellationToken cancellationToken = default) =>
-        Task.Run(() => Capture(cancellationToken), cancellationToken);
+        Task.Run(() =>
+        {
+            var directory = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "ControllerBattery", "diagnostics");
+            var path = Path.Combine(directory,
+                $"controller-inputs-{DateTime.Now:yyyyMMdd-HHmmss}.json");
+            return Capture(DeviceList.Local.GetHidDevices(), path, cancellationToken);
+        }, cancellationToken);
 
-    private static string Capture(CancellationToken cancellationToken)
+    internal static string Capture(IEnumerable<HidDevice> sourceDevices, string path,
+        CancellationToken cancellationToken)
     {
         var devices = new List<object>();
-        foreach (var device in DeviceList.Local.GetHidDevices())
+        foreach (var device in sourceDevices)
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (!IsGameController(device)) continue;
@@ -77,11 +86,9 @@ internal static class ControllerDiagnosticsService
             });
         }
 
-        var directory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "ControllerBattery", "diagnostics");
+        var directory = Path.GetDirectoryName(path)
+            ?? throw new ArgumentException("A diagnostics path must have a directory.", nameof(path));
         Directory.CreateDirectory(directory);
-        var path = Path.Combine(directory, $"controller-inputs-{DateTime.Now:yyyyMMdd-HHmmss}.json");
         File.WriteAllText(path, JsonSerializer.Serialize(new
         {
             capturedAtUtc = DateTime.UtcNow,
@@ -130,7 +137,7 @@ internal static class ControllerDiagnosticsService
                name.Contains("8bitdo", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static bool ContainsTopLevelUsage(ReadOnlySpan<byte> descriptor, byte usage)
+    internal static bool ContainsTopLevelUsage(ReadOnlySpan<byte> descriptor, byte usage)
     {
         for (var index = 0; index <= descriptor.Length - 4; index++)
         {
@@ -141,7 +148,7 @@ internal static class ControllerDiagnosticsService
         return false;
     }
 
-    private static string? TryGet(Func<string> getter)
+    internal static string? TryGet(Func<string> getter)
     {
         try { return getter(); }
         catch (Exception exception) when (IsDeviceException(exception))
@@ -156,13 +163,13 @@ internal static class ControllerDiagnosticsService
         catch (Exception exception) when (IsDeviceException(exception)) { return null; }
     }
 
-    private static int TryGetLength(Func<int> getter)
+    internal static int TryGetLength(Func<int> getter)
     {
         try { return getter(); }
         catch (Exception exception) when (IsDeviceException(exception)) { return 0; }
     }
 
-    private static bool IsDeviceException(Exception exception) =>
+    internal static bool IsDeviceException(Exception exception) =>
         exception is IOException or UnauthorizedAccessException or InvalidOperationException or
             NotSupportedException or ArgumentException;
 }

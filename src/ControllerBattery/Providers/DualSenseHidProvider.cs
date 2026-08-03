@@ -17,6 +17,18 @@ public sealed class DualSenseHidProvider : IControllerProvider, IPowerOffControl
     private const int DualSenseEdgeProductId = 0x0DF2;
     private const int ReadTimeoutMilliseconds = 180;
     private const int ReportsToInspect = 6;
+    private readonly Func<IEnumerable<HidDevice>> _getDevices;
+    private readonly Action<string?> _disconnectBluetooth;
+
+    public DualSenseHidProvider() : this(
+        () => DeviceList.Local.GetHidDevices(SonyVendorId), WindowsBluetooth.Disconnect) { }
+
+    internal DualSenseHidProvider(Func<IEnumerable<HidDevice>> getDevices,
+        Action<string?> disconnectBluetooth)
+    {
+        _getDevices = getDevices;
+        _disconnectBluetooth = disconnectBluetooth;
+    }
 
     public string Id => "sony-dualsense-hid";
 
@@ -40,7 +52,7 @@ public sealed class DualSenseHidProvider : IControllerProvider, IPowerOffControl
 
     private IReadOnlyList<ControllerDevice> Scan(CancellationToken cancellationToken)
     {
-        var devices = DeviceList.Local.GetHidDevices(SonyVendorId)
+        var devices = _getDevices()
             .Where(IsSupportedProduct)
             .GroupBy(device => device.DevicePath, StringComparer.OrdinalIgnoreCase)
             .Select(group => group.First());
@@ -150,9 +162,9 @@ public sealed class DualSenseHidProvider : IControllerProvider, IPowerOffControl
         }
     }
 
-    private static void PowerOff(ControllerDevice controller, CancellationToken cancellationToken)
+    private void PowerOff(ControllerDevice controller, CancellationToken cancellationToken)
     {
-        var device = DeviceList.Local.GetHidDevices(SonyVendorId)
+        var device = _getDevices()
             .Where(IsSupportedProduct)
             .FirstOrDefault(candidate => GetStableHardwareId(candidate)
                 .Equals(controller.Id, StringComparison.OrdinalIgnoreCase))
@@ -163,12 +175,12 @@ public sealed class DualSenseHidProvider : IControllerProvider, IPowerOffControl
         }
 
         cancellationToken.ThrowIfCancellationRequested();
-        WindowsBluetooth.Disconnect(device.GetSerialNumber());
+        _disconnectBluetooth(GetSerialNumber(device));
     }
 
-    private static void Pulse(ControllerDevice controller, CancellationToken cancellationToken)
+    private void Pulse(ControllerDevice controller, CancellationToken cancellationToken)
     {
-        var device = DeviceList.Local.GetHidDevices(SonyVendorId)
+        var device = _getDevices()
             .Where(IsSupportedProduct)
             .FirstOrDefault(candidate => GetStableHardwareId(candidate)
                 .Equals(controller.Id, StringComparison.OrdinalIgnoreCase));
@@ -201,10 +213,10 @@ public sealed class DualSenseHidProvider : IControllerProvider, IPowerOffControl
         }
     }
 
-    private static void SetLedColor(ControllerDevice controller, string color, byte brightness,
+    private void SetLedColor(ControllerDevice controller, string color, byte brightness,
         CancellationToken cancellationToken)
     {
-        var device = DeviceList.Local.GetHidDevices(SonyVendorId)
+        var device = _getDevices()
             .Where(IsSupportedProduct)
             .FirstOrDefault(candidate => GetStableHardwareId(candidate)
                 .Equals(controller.Id, StringComparison.OrdinalIgnoreCase))
@@ -224,10 +236,10 @@ public sealed class DualSenseHidProvider : IControllerProvider, IPowerOffControl
         }
     }
 
-    private static void ResetLed(ControllerDevice controller,
+    private void ResetLed(ControllerDevice controller,
         CancellationToken cancellationToken)
     {
-        var device = DeviceList.Local.GetHidDevices(SonyVendorId)
+        var device = _getDevices()
             .Where(IsSupportedProduct)
             .FirstOrDefault(candidate => GetStableHardwareId(candidate)
                 .Equals(controller.Id, StringComparison.OrdinalIgnoreCase))
@@ -374,18 +386,27 @@ public sealed class DualSenseHidProvider : IControllerProvider, IPowerOffControl
     {
         try
         {
-            var serial = device.GetSerialNumber();
+            var serial = GetSerialNumber(device);
             if (!string.IsNullOrWhiteSpace(serial))
             {
                 return $"{device.VendorID:X4}:{device.ProductID:X4}:{serial}";
             }
         }
-        catch (IOException)
+        catch (Exception exception) when (exception is IOException or NotSupportedException)
         {
             // Bluetooth stacks and busy devices do not always expose serial data.
         }
 
         return $"{device.VendorID:X4}:{device.ProductID:X4}:{device.DevicePath}";
+    }
+
+    private static string? GetSerialNumber(HidDevice device)
+    {
+        try { return device.GetSerialNumber(); }
+        catch (Exception exception) when (exception is IOException or NotSupportedException)
+        {
+            return null;
+        }
     }
 
     internal sealed record BatteryObservation(int? Percent, bool IsCharging, string? Note);

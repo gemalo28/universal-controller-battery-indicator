@@ -14,6 +14,18 @@ public sealed class EightBitDoHidProvider : IControllerProvider
     private const int EightBitDoVendorId = 0x2DC8;
     private const int ReadTimeoutMilliseconds = 120;
     private const int ReportsToInspect = 5;
+    private readonly Func<IEnumerable<HidDevice>> _getDevices;
+    private readonly Func<HidDevice, bool> _isGameController;
+
+    public EightBitDoHidProvider() : this(
+        () => DeviceList.Local.GetHidDevices(EightBitDoVendorId), IsGameController) { }
+
+    internal EightBitDoHidProvider(Func<IEnumerable<HidDevice>> getDevices,
+        Func<HidDevice, bool>? isGameController = null)
+    {
+        _getDevices = getDevices;
+        _isGameController = isGameController ?? IsGameController;
+    }
 
     public string Id => "8bitdo-hid";
 
@@ -25,11 +37,11 @@ public sealed class EightBitDoHidProvider : IControllerProvider
     {
         var controllers = new List<ControllerDevice>();
 
-        foreach (var device in DeviceList.Local.GetHidDevices(EightBitDoVendorId))
+        foreach (var device in _getDevices())
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (!IsGameController(device))
+            if (!_isGameController(device))
             {
                 continue;
             }
@@ -104,7 +116,7 @@ public sealed class EightBitDoHidProvider : IControllerProvider
         {
             return null;
         }
-        catch (IOException)
+        catch (Exception exception) when (exception is IOException or NotSupportedException)
         {
             return null;
         }
@@ -142,13 +154,13 @@ public sealed class EightBitDoHidProvider : IControllerProvider
             var descriptor = device.GetRawReportDescriptor();
             return ContainsUsage(descriptor, 0x05) || ContainsUsage(descriptor, 0x04);
         }
-        catch (IOException)
+        catch (Exception exception) when (exception is IOException or NotSupportedException)
         {
             return false;
         }
     }
 
-    private static bool ContainsUsage(ReadOnlySpan<byte> descriptor, byte usage)
+    internal static bool ContainsUsage(ReadOnlySpan<byte> descriptor, byte usage)
     {
         // Generic Desktop usage page (05 01), followed by Game Pad (09 05)
         // or Joystick (09 04). This filters out receiver consumer-control and
@@ -172,7 +184,7 @@ public sealed class EightBitDoHidProvider : IControllerProvider
             var product = device.GetProductName();
             return string.IsNullOrWhiteSpace(product) ? "8BitDo Controller" : product.Trim();
         }
-        catch (IOException)
+        catch (Exception exception) when (exception is IOException or NotSupportedException)
         {
             return "8BitDo Controller";
         }
@@ -182,13 +194,13 @@ public sealed class EightBitDoHidProvider : IControllerProvider
     {
         try
         {
-            var serial = device.GetSerialNumber();
+            var serial = GetSerialNumber(device);
             if (!string.IsNullOrWhiteSpace(serial))
             {
                 return $"{device.VendorID:X4}:{device.ProductID:X4}:{serial}";
             }
         }
-        catch (IOException)
+        catch (Exception exception) when (exception is IOException or NotSupportedException)
         {
             // Serial numbers are optional for Bluetooth and receiver interfaces.
         }
@@ -196,12 +208,21 @@ public sealed class EightBitDoHidProvider : IControllerProvider
         return $"{device.VendorID:X4}:{device.ProductID:X4}:{device.DevicePath}";
     }
 
-    private static string GetConnection(string devicePath) =>
+    private static string? GetSerialNumber(HidDevice device)
+    {
+        try { return device.GetSerialNumber(); }
+        catch (Exception exception) when (exception is IOException or NotSupportedException)
+        {
+            return null;
+        }
+    }
+
+    internal static string GetConnection(string devicePath) =>
         devicePath.Contains("BTH", StringComparison.OrdinalIgnoreCase)
             ? "Bluetooth"
             : "USB / 2.4 GHz";
 
-    private static string GetBatteryNote(string connection) => connection == "Bluetooth"
+    internal static string GetBatteryNote(string connection) => connection == "Bluetooth"
         ? "Battery is not exposed through this HID mode"
         : "Battery is not exposed by this controller or receiver mode";
 

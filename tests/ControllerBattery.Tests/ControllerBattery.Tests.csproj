@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
@@ -17,5 +18,11 @@
   </ItemGroup>
   <ItemGroup>
     <None Update="Fixtures\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="..\..\src\ControllerBattery\Assets\controller-battery.ico"
+              Link="Assets\controller-battery.ico" />
+    <Resource Include="..\..\src\ControllerBattery\Assets\controller-icon-titlebar.png"
+              Link="Assets\controller-icon-titlebar.png" />
   </ItemGroup>
 </Project>

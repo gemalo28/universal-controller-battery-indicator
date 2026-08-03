@@ -98,7 +98,7 @@ public sealed class XInputControllerProvider : IControllerProvider, IAttentionPu
         }
     }
 
-    private static BatteryLevel ToBatteryLevel(byte level) => level switch
+    internal static BatteryLevel ToBatteryLevel(byte level) => level switch
     {
         0 => BatteryLevel.Empty,
         1 => BatteryLevel.Low,

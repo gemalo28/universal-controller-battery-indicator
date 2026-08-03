@@ -9,18 +9,20 @@ internal static class WindowsBluetooth
     private const uint IoctlDisconnectDevice = 0x41000C;
 
     internal static void Disconnect(string? serial)
+        => Disconnect(serial, WindowsBluetoothNative.Instance);
+
+    internal static void Disconnect(string? serial, IWindowsBluetoothNative native)
     {
         if (!TryParseAddress(serial, out var address))
         {
             throw new IOException("Windows did not expose the controller's Bluetooth address.");
         }
 
-        var parameters = new FindRadioParams { Size = Marshal.SizeOf<FindRadioParams>() };
-        var findHandle = NativeMethods.BluetoothFindFirstRadio(ref parameters, out var radioHandle);
+        var findHandle = native.FindFirstRadio(out var radioHandle);
         if (findHandle == IntPtr.Zero)
         {
             throw new IOException("Windows could not find a Bluetooth radio.",
-                new Win32Exception(Marshal.GetLastWin32Error()));
+                new Win32Exception(native.LastError));
         }
 
         var error = 0;
@@ -30,33 +32,32 @@ internal static class WindowsBluetooth
             {
                 try
                 {
-                    if (NativeMethods.DeviceIoControl(radioHandle, IoctlDisconnectDevice,
-                            ref address, sizeof(long), IntPtr.Zero, 0, out _, IntPtr.Zero))
+                    if (native.DisconnectDevice(radioHandle, IoctlDisconnectDevice, ref address))
                     {
                         return;
                     }
 
-                    error = Marshal.GetLastWin32Error();
+                    error = native.LastError;
                 }
                 finally
                 {
-                    NativeMethods.CloseHandle(radioHandle);
+                    native.CloseHandle(radioHandle);
                 }
 
-                if (!NativeMethods.BluetoothFindNextRadio(findHandle, out radioHandle))
+                if (!native.FindNextRadio(findHandle, out radioHandle))
                     radioHandle = IntPtr.Zero;
             }
         }
         finally
         {
-            NativeMethods.BluetoothFindRadioClose(findHandle);
+            native.CloseFind(findHandle);
         }
 
         throw new IOException("Windows could not disconnect the Bluetooth controller.",
             new Win32Exception(error));
     }
 
-    private static bool TryParseAddress(string? serial, out long address)
+    internal static bool TryParseAddress(string? serial, out long address)
     {
         address = 0;
         if (string.IsNullOrWhiteSpace(serial)) return false;
@@ -74,6 +75,38 @@ internal static class WindowsBluetooth
             return true;
         }
         catch (FormatException) { return false; }
+    }
+
+    internal interface IWindowsBluetoothNative
+    {
+        int LastError { get; }
+        IntPtr FindFirstRadio(out IntPtr radio);
+        bool FindNextRadio(IntPtr find, out IntPtr radio);
+        bool DisconnectDevice(IntPtr handle, uint code, ref long address);
+        void CloseHandle(IntPtr handle);
+        void CloseFind(IntPtr find);
+    }
+
+    private sealed class WindowsBluetoothNative : IWindowsBluetoothNative
+    {
+        internal static readonly WindowsBluetoothNative Instance = new();
+        public int LastError => Marshal.GetLastWin32Error();
+
+        public IntPtr FindFirstRadio(out IntPtr radio)
+        {
+            var parameters = new FindRadioParams { Size = Marshal.SizeOf<FindRadioParams>() };
+            return NativeMethods.BluetoothFindFirstRadio(ref parameters, out radio);
+        }
+
+        public bool FindNextRadio(IntPtr find, out IntPtr radio) =>
+            NativeMethods.BluetoothFindNextRadio(find, out radio);
+
+        public bool DisconnectDevice(IntPtr handle, uint code, ref long address) =>
+            NativeMethods.DeviceIoControl(handle, code, ref address, sizeof(long), IntPtr.Zero, 0,
+                out _, IntPtr.Zero);
+
+        public void CloseHandle(IntPtr handle) => NativeMethods.CloseHandle(handle);
+        public void CloseFind(IntPtr find) => NativeMethods.BluetoothFindRadioClose(find);
     }
 
     [StructLayout(LayoutKind.Sequential)]

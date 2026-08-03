@@ -5,7 +5,7 @@ namespace ControllerBattery.Services;
 
 public static class AppSettingsStore
 {
-    private static readonly string SettingsPath = Path.Combine(
+    private static string SettingsPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "ControllerBattery", "settings.json");
 
@@ -13,13 +13,8 @@ public static class AppSettingsStore
 
     internal static AppSettings LoadFrom(string path)
     {
-        try
-        {
-            var settings = AtomicJsonFile.Load<AppSettings>(path) ?? AppSettings.Default;
-            return AppSettingsService.Normalize(settings);
-        }
-        catch (IOException) { return AppSettings.Default; }
-        catch (UnauthorizedAccessException) { return AppSettings.Default; }
+        var settings = AtomicJsonFile.Load<AppSettings>(path) ?? AppSettings.Default;
+        return AppSettingsService.Normalize(settings);
     }
 
     public static void Save(AppSettings settings) => SaveTo(SettingsPath, settings);

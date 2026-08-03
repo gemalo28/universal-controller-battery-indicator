@@ -17,4 +17,12 @@ public sealed class DeviceNotificationInteropTests
     [InlineData(0x8003)]
     public void IsControllerDeviceChange_IgnoresUnrelatedEvents(int eventType) =>
         Assert.False(DeviceNotificationInterop.IsControllerDeviceChange(eventType));
+
+    [Fact]
+    public void RegisterAndUnregister_InvalidWindowRemainSafe()
+    {
+        var registrations = DeviceNotificationInterop.RegisterControllerNotifications(IntPtr.Zero);
+        DeviceNotificationInterop.UnregisterControllerNotifications(registrations);
+        DeviceNotificationInterop.UnregisterControllerNotifications([IntPtr.Zero]);
+    }
 }

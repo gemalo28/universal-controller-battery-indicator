@@ -34,9 +34,9 @@ public partial class MainWindow : Window
     private readonly IControllerProvider _provider;
     private readonly ControllerMonitoringService _monitoringService;
     private readonly ControllerActionService _controllerActions;
-    private readonly Dictionary<string, ControllerProfile> _profiles = ControllerProfileStore.Load();
+    private readonly Dictionary<string, ControllerProfile> _profiles;
     private string? _selectedId;
-    private AppSettings _settings = AppSettingsStore.Load();
+    private AppSettings _settings;
     private OverlayWindow? _overlay;
     private LowBatteryNotificationWindow? _lowBatteryNotification;
     private readonly LowBatteryService _lowBatteryService = new();
@@ -57,10 +57,20 @@ public partial class MainWindow : Window
     {
         Interval = TimeSpan.FromMilliseconds(400)
     };
+    private readonly Action<IReadOnlyDictionary<string, ControllerProfile>> _saveProfiles;
 
-    public MainWindow()
+    public MainWindow() : this(ControllerProviderFactory.CreateHardwareProvider(),
+        AppSettingsStore.Load(), ControllerProfileStore.Load(), showTrayIcon: true,
+        ControllerProfileStore.Save) { }
+
+    internal MainWindow(IControllerProvider provider, AppSettings settings,
+        Dictionary<string, ControllerProfile> profiles, bool showTrayIcon,
+        Action<IReadOnlyDictionary<string, ControllerProfile>>? saveProfiles = null)
     {
         InitializeComponent();
+        _settings = settings;
+        _profiles = profiles;
+        _saveProfiles = saveProfiles ?? ControllerProfileStore.Save;
         if (App.StartInBackground)
         {
             WindowState = WindowState.Minimized;
@@ -72,11 +82,11 @@ public partial class MainWindow : Window
             Icon = LoadTrayIcon(),
             Text = "Controller Battery",
             ContextMenuStrip = _trayMenu,
-            Visible = true
+            Visible = showTrayIcon
         };
         _trayIcon.DoubleClick += (_, _) => RestoreFromTray();
         _deviceChangeTimer.Tick += DeviceChangeTimer_Tick;
-        _provider = ControllerProviderFactory.CreateHardwareProvider();
+        _provider = provider;
         _monitoringService = new ControllerMonitoringService(_provider);
         _controllerActions = new ControllerActionService(_provider);
         _monitoringService.SnapshotUpdated += MonitoringService_SnapshotUpdated;
@@ -636,7 +646,7 @@ public partial class MainWindow : Window
         else
             _profiles[childKey] = profile;
 
-        try { ControllerProfileStore.Save(_profiles); }
+        try { _saveProfiles(_profiles); }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
             MessageBox.Show(this, exception.Message, "Could not save controller grouping",
@@ -1015,6 +1025,11 @@ public partial class MainWindow : Window
         }
 
         if (accepted != true || dialog.Result is not { } profile) return;
+        ApplyProfile(controller, profile);
+    }
+
+    internal void ApplyProfile(ControllerDevice controller, ControllerProfile profile)
+    {
         _appliedLedProfiles.Remove(profile.DeviceKey);
 
         if (string.IsNullOrWhiteSpace(profile.CustomName) &&
@@ -1028,7 +1043,7 @@ public partial class MainWindow : Window
 
         try
         {
-            ControllerProfileStore.Save(_profiles);
+            _saveProfiles(_profiles);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
