@@ -15,6 +15,9 @@ jobs:
       - run: dotnet restore ControllerBattery.sln
       - run: dotnet build ControllerBattery.sln --configuration Release --no-restore
       - run: dotnet test ControllerBattery.sln --configuration Release --no-build --settings coverage.runsettings --collect:"XPlat Code Coverage" --logger trx --results-directory TestResults
+      - name: Enforce 90% line coverage
+        shell: pwsh
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File ./scripts/Assert-Coverage.ps1 -ResultsPath TestResults -MinimumLineCoverage 90
       - uses: actions/upload-artifact@v4
         if: always()
         with:

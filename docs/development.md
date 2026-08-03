@@ -46,6 +46,17 @@ Collect coverage with the checked-in settings:
 dotnet test ControllerBattery.sln --settings coverage.runsettings --collect:"XPlat Code Coverage"
 ```
 
+CI enforces a mandatory aggregate line-coverage threshold of **90%**. To run the same gate
+locally after collecting results into `TestResults`:
+
+```powershell
+dotnet test ControllerBattery.sln -c Release --settings coverage.runsettings --collect:"XPlat Code Coverage" --results-directory TestResults
+pwsh -NoProfile -ExecutionPolicy Bypass -File ./scripts/Assert-Coverage.ps1 -ResultsPath TestResults -MinimumLineCoverage 90
+```
+
+The gate sums covered and valid lines across all generated Cobertura reports. A missing or
+empty report also fails the check.
+
 For an optional local HTML report:
 
 ```powershell
@@ -149,8 +160,9 @@ dotnet test ControllerBattery.sln -c Release
 ```
 
 New business logic, protocol parsing, migrations, persistence behavior, and bug fixes should
-include focused tests. Prefer deterministic fakes over real time, hardware enumeration, or
-starting WPF windows in unit tests.
+include focused tests. Pull requests must keep aggregate line coverage at or above the mandatory
+90% threshold. Prefer deterministic fakes over real time, hardware enumeration, or starting WPF
+windows in unit tests.
 
 Automated tests do not replace manual Windows validation for:
 

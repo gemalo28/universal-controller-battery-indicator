@@ -337,9 +337,10 @@ Coverage is collected with `coverlet.collector` and `coverage.runsettings`:
 dotnet test ControllerBattery.sln --settings coverage.runsettings --collect:"XPlat Code Coverage"
 ```
 
-The long-term line-coverage target is **90%**. Only generated XAML/compiler output is excluded.
-Use the current CI report as the baseline; any enforced threshold should increase monotonically
-and must never be lowered to accommodate a change.
+CI enforces a mandatory aggregate line-coverage threshold of **90%**. Only generated
+XAML/compiler output is excluded. `scripts/Assert-Coverage.ps1` sums the covered and valid lines
+from all Cobertura reports and fails for missing reports, empty reports, or coverage below the
+threshold. The threshold must not be lowered to accommodate a change.
 
 Priority gaps are controller action coordination, provider output-report generation, diagnostics,
 persistence fault injection, presentation-state projection, and isolated code-behind behavior.
