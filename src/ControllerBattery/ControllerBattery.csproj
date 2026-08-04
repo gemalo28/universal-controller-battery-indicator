@@ -7,7 +7,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>ControllerBattery</RootNamespace>
     <AssemblyName>ControllerBattery</AssemblyName>
-    <Version>0.3.0</Version>
+    <Version>0.0.1</Version>
     <RepositoryUrl>https://github.com/gemalo28/universal-controller-battery-indicator</RepositoryUrl>
     <Description>Windows controller battery monitoring, overlays, notifications, and profiles.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
