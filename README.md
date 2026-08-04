@@ -40,6 +40,42 @@ the startup entry points to its current location. Settings and profiles remain u
 - Supports identification, Bluetooth power-off, and DualSense LED control when the
   active controller provider supports those actions.
 
+## Screenshots
+
+### Grouping virtual controllers
+
+When a physical controller and an ungrouped XInput output are both present, the dashboard
+shows a grouping hint alongside the two controller cards.
+
+![Controller Battery displaying separate XInput and PS5 controller cards with a hint explaining how to group them](docs/images/ungrouped-controllers.png)
+
+### Controller details
+
+The dashboard shows battery details and keeps a grouped virtual XInput output attached to
+its matching physical controller.
+
+![Controller Battery displaying a PS5 controller at 75 percent with its grouped XInput game output](docs/images/controller-details.png)
+
+### In-game overlay
+
+The compact overlay keeps controller identity, connection, and battery information visible
+without switching away from a game.
+
+<img src="docs/images/overlay.png" alt="Controller Battery in-game overlay showing a PS5 controller connected over Bluetooth at 75 percent" width="390">
+
+### Controller profiles
+
+Profiles let each controller use a custom name, family icon, accent color, and supported
+device-specific options.
+
+<img src="docs/images/controller-profile.png" alt="Controller Battery profile editor showing custom naming and controller icon choices" width="574">
+
+### Settings
+
+Settings use the same compact, modern interface as the dashboard.
+
+<img src="docs/images/settings.png" alt="Controller Battery settings window showing the overlay shortcut configuration" width="460">
+
 ## Getting started
 
 1. Start Controller Battery.
