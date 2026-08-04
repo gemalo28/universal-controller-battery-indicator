@@ -269,6 +269,13 @@ public sealed class WpfWindowIntegrationTests
 
         Invoke(window, "RenderControllerList");
         Assert.Equal(controllers.Count, window.ControllerList.Children.Count);
+        Assert.Equal(Visibility.Visible, window.GroupingHint.Visibility);
+        Assert.True(InvokeStatic<bool>(typeof(MainWindow), "ShouldShowGroupingHint",
+            (object)controllers));
+        Assert.False(InvokeStatic<bool>(typeof(MainWindow), "ShouldShowGroupingHint",
+            (object)controllers.Where(controller => controller.ProviderId != "xinput").ToArray()));
+        Assert.False(InvokeStatic<bool>(typeof(MainWindow), "ShouldShowGroupingHint",
+            (object)controllers.Where(controller => controller.ProviderId == "xinput").ToArray()));
         Assert.Equal(controllers.Count, Invoke<IReadOnlyList<ControllerDevice>>(
             window, "PresentationControllers").Count);
         Assert.Equal(controllers[1], Invoke<ControllerDevice?>(window, "LinkedParent", child));

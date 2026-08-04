@@ -253,11 +253,21 @@ public partial class MainWindow : Window
     private void RenderControllerList()
     {
         ControllerList.Children.Clear();
-        foreach (var controller in PresentationControllers())
+        var controllers = PresentationControllers();
+        GroupingHint.Visibility = ShouldShowGroupingHint(controllers)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        foreach (var controller in controllers)
         {
             ControllerList.Children.Add(CreateControllerCard(controller));
         }
     }
+
+    private static bool ShouldShowGroupingHint(IReadOnlyList<ControllerDevice> controllers) =>
+        controllers.Any(controller => controller.ProviderId.Equals(
+            "xinput", StringComparison.OrdinalIgnoreCase)) &&
+        controllers.Any(controller => !controller.ProviderId.Equals(
+            "xinput", StringComparison.OrdinalIgnoreCase));
 
     private IReadOnlyList<ControllerDevice> PresentationControllers() =>
         _controllers.Where(controller => LinkedParent(controller) is null).ToArray();

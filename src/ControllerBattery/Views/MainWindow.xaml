@@ -113,7 +113,33 @@
       <Grid Margin="22,24,22,18"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
         <StackPanel><TextBlock Text="CONTROLLERS" Foreground="#8B7CF6" FontSize="10" FontWeight="Bold"/><TextBlock Text="Connected devices" Foreground="#F4F2FF" FontSize="23" FontWeight="SemiBold" Margin="0,5,0,0"/><TextBlock Text="Select one to view battery details." Foreground="#858092" FontSize="12" Margin="0,6,0,0"/></StackPanel>
         <Grid Grid.Row="1" Margin="0,24,0,12"><TextBlock Text="AVAILABLE NOW" Foreground="#6F6A7C" FontSize="10" FontWeight="Bold" VerticalAlignment="Center"/><Border HorizontalAlignment="Right" Background="#282438" CornerRadius="10" Padding="10,4"><TextBlock x:Name="DeviceCount" Text="0" Foreground="#CFC9E3" FontSize="11" FontWeight="SemiBold"/></Border></Grid>
-        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><StackPanel><StackPanel x:Name="ControllerList"/><Border x:Name="EmptyState" Padding="20,24" Background="#1C1A25" BorderBrush="#343041" BorderThickness="1" CornerRadius="14"><StackPanel HorizontalAlignment="Center"><Border Width="48" Height="48" CornerRadius="15" Background="#29263A" HorizontalAlignment="Center"><TextBlock Text="+" Foreground="#9B8CFF" FontSize="24" FontWeight="Light" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><TextBlock Text="No controllers yet" Foreground="#ECE9F3" FontSize="14" FontWeight="SemiBold" TextAlignment="Center" Margin="0,14,0,0"/><TextBlock Text="Connect or wake a controller, then refresh." Foreground="#817C8D" FontSize="12" LineHeight="18" TextWrapping="Wrap" TextAlignment="Center" Margin="0,6,0,0"/></StackPanel></Border></StackPanel></ScrollViewer>
+        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+          <StackPanel>
+            <Border x:Name="GroupingHint" Visibility="Collapsed" Background="#201D31" BorderBrush="#514779"
+                    BorderThickness="1" CornerRadius="11" Padding="11" Margin="0,0,0,12"
+                    ToolTip="Grouping hides duplicate virtual outputs in the dashboard, overlay, and notifications.">
+              <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="32"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <Border Width="24" Height="24" CornerRadius="7" Background="#342D50"
+                        HorizontalAlignment="Left" VerticalAlignment="Top">
+                  <Viewbox Width="14" Height="14">
+                    <Path Stroke="#B4A8FF" StrokeThickness="2" StrokeStartLineCap="Round"
+                          StrokeEndLineCap="Round" Data="M8,12 L5,15 C3.3,16.7 3.3,19.3 5,21 C6.7,22.7 9.3,22.7 11,21 L14,18 M16,12 L19,9 C20.7,7.3 20.7,4.7 19,3 C17.3,1.3 14.7,1.3 13,3 L10,6 M8,16 L16,8"/>
+                  </Viewbox>
+                </Border>
+                <StackPanel Grid.Column="1">
+                  <TextBlock Text="Virtual controller detected?" Foreground="#E8E3FF" FontSize="11"
+                             FontWeight="SemiBold"/>
+                  <TextBlock Text="Drag its XInput card onto the matching physical controller to group them."
+                             Foreground="#A39CB9" FontSize="10" LineHeight="15" TextWrapping="Wrap"
+                             Margin="0,3,0,0"/>
+                </StackPanel>
+              </Grid>
+            </Border>
+            <StackPanel x:Name="ControllerList"/>
+            <Border x:Name="EmptyState" Padding="20,24" Background="#1C1A25" BorderBrush="#343041" BorderThickness="1" CornerRadius="14"><StackPanel HorizontalAlignment="Center"><Border Width="48" Height="48" CornerRadius="15" Background="#29263A" HorizontalAlignment="Center"><TextBlock Text="+" Foreground="#9B8CFF" FontSize="24" FontWeight="Light" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><TextBlock Text="No controllers yet" Foreground="#ECE9F3" FontSize="14" FontWeight="SemiBold" TextAlignment="Center" Margin="0,14,0,0"/><TextBlock Text="Connect or wake a controller, then refresh." Foreground="#817C8D" FontSize="12" LineHeight="18" TextWrapping="Wrap" TextAlignment="Center" Margin="0,6,0,0"/></StackPanel></Border>
+          </StackPanel>
+        </ScrollViewer>
         <StackPanel Grid.Row="3">
           <Border Height="1" Background="#2A2835" Margin="0,14,0,10"/>
           <Button x:Name="SettingsButton" Click="SettingsButton_Click" Style="{StaticResource SidebarAction}">
